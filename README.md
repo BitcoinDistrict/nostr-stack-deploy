@@ -89,6 +89,23 @@ sudo apt-get install -y build-essential libsqlite3-dev libssl-dev pkg-config \
     liblmdb-dev libflatbuffers-dev libsecp256k1-dev libzstd-dev zlib1g-dev
 ```
 
+### 1.1 System Requirements
+
+**Minimum Requirements:**
+- **RAM**: 1GB (with automatic swap space configuration)
+- **Storage**: 20GB+ (for OS, dependencies, and strfry database)
+- **CPU**: 1 vCPU (compilation will be single-threaded)
+
+**Recommended Requirements:**
+- **RAM**: 2GB+ (enables parallel compilation)
+- **Storage**: 40GB+ (for larger databases and future growth)
+- **CPU**: 2+ vCPUs (faster compilation and better performance)
+
+**Performance Notes:**
+- 1GB RAM droplets will use single-threaded compilation (slower but reliable)
+- 2GB+ RAM droplets will use parallel compilation (faster build)
+- The deploy script automatically optimizes for your system's capabilities
+
 ### 2. GitHub Secrets
 
 | Secret Name      | Description                     |
@@ -107,8 +124,10 @@ sudo apt-get install -y build-essential libsqlite3-dev libssl-dev pkg-config \
 ### 4. Deploy Script (`scripts/deploy.sh`)
 
 * Installs all required build dependencies.
+* **Automatically configures swap space** for memory-constrained systems.
+* **Adaptive compilation** - uses single-threaded compilation on low-memory systems (<2GB RAM).
 * Configures UFW firewall (SSH + port 7777).
-* Builds Strfry from submodule.
+* Builds Strfry from submodule with optimal settings for your system.
 * Copies config to `$HOME/.strfry/strfry.conf`.
 * Ensures data directory exists.
 * Restarts systemd service.

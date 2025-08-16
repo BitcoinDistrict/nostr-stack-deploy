@@ -18,6 +18,25 @@ sudo apt-get install -y build-essential libsqlite3-dev libssl-dev pkg-config \
     liblmdb-dev libflatbuffers-dev libsecp256k1-dev libzstd-dev zlib1g-dev
 
 # -----------------------------
+# Configure swap space for memory-constrained systems
+# -----------------------------
+if [ ! -f /swapfile ]; then
+    echo "📦 Setting up swap space for memory-constrained compilation..."
+    sudo fallocate -l 2G /swapfile
+    sudo chmod 600 /swapfile
+    sudo mkswap /swapfile
+    sudo swapon /swapfile
+    
+    # Make swap permanent
+    if ! grep -q "/swapfile" /etc/fstab; then
+        echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+    fi
+    echo "✅ Swap space configured (2GB)"
+else
+    echo "✅ Swap space already exists"
+fi
+
+# -----------------------------
 # Configure firewall
 # -----------------------------
 sudo ufw --force enable
@@ -26,12 +45,45 @@ sudo ufw allow 7777/tcp
 echo "✅ Firewall configured: SSH and port 7777 allowed"
 
 # -----------------------------
+# Determine optimal compilation settings based on available memory
+# -----------------------------
+TOTAL_MEM=$(free -m | awk 'NR==2{printf "%.0f", $2}')
+echo "💾 Total system memory: ${TOTAL_MEM}MB"
+
+if [ "$TOTAL_MEM" -lt 2048 ]; then
+    # Less than 2GB RAM - use single-threaded compilation
+    MAKE_JOBS=1
+    echo "🔧 Using single-threaded compilation (low memory system)"
+else
+    # 2GB+ RAM - use parallel compilation with conservative job count
+    CPU_CORES=$(nproc)
+    if [ "$TOTAL_MEM" -lt 4096 ]; then
+        # 2-4GB RAM - use half the cores
+        MAKE_JOBS=$((CPU_CORES / 2))
+    else
+        # 4GB+ RAM - use all cores
+        MAKE_JOBS=$CPU_CORES
+    fi
+    echo "🔧 Using parallel compilation with ${MAKE_JOBS} jobs"
+fi
+
+# -----------------------------
 # Build strfry
 # -----------------------------
+echo "🔨 Starting strfry compilation..."
 cd "$STRFRY_DIR"
+
+# Clean any previous failed builds
+if [ -d "build" ]; then
+    echo "🧹 Cleaning previous build artifacts..."
+    rm -rf build/
+fi
+
 git submodule update --init
 make setup-golpe
-make -j$(nproc)
+
+echo "⚡ Compiling strfry with ${MAKE_JOBS} parallel jobs..."
+make -j${MAKE_JOBS}
 
 # -----------------------------
 # Deploy runtime config
