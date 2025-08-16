@@ -22,17 +22,20 @@ jobs:
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh
-          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 700 ~/.ssh
+          printf "%s" "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+          touch ~/.ssh/known_hosts
 
       - name: Sync repo to server
         run: |
-          rsync -az --delete --exclude='.git' --exclude='strfry-db' ./ ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:~/nostr-stack-deploy
+          rsync -az -e "ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new" \
+            --delete --exclude='.git' --exclude='strfry-db' ./ \
+            ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:~/nostr-stack-deploy
 
       - name: Run deploy script on server
         run: |
-          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "\
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "\
             DOMAIN=${{ secrets.RELAY_DOMAIN }} \\
             CERTBOT_EMAIL=${{ secrets.CERTBOT_EMAIL }} \\
             DASHBOARD_ENABLED=${{ vars.DASHBOARD_ENABLED }} \\
@@ -43,7 +46,7 @@ jobs:
 
       - name: Post-deploy smoke test
         run: |
-          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "
+          ssh -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "
             set -euo pipefail
             STRFRY_BIN=~/nostr-stack-deploy/strfry/strfry
             CONFIG_PATH=~/\.strfry/strfry.conf
