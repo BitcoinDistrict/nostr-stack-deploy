@@ -67,7 +67,9 @@ nostr-stack-deploy/
 │  └─ deploy.sh                # Server-side deploy script
 ├─ configs/
 │  ├─ strfry.conf              # Repo-controlled Strfry config
-│  └─ strfry.service           # Systemd service unit
+│  ├─ strfry.service           # Systemd service unit
+│  └─ nginx/                   # Nginx configuration files
+│     └─ relay.bitcoindistrict.org.conf
 └─ strfry/                     # Submodule pointing to Strfry upstream
 ```
 
@@ -126,7 +128,9 @@ sudo apt-get install -y build-essential libsqlite3-dev libssl-dev pkg-config \
 * Installs all required build dependencies.
 * **Automatically configures swap space** for memory-constrained systems.
 * **Adaptive compilation** - uses single-threaded compilation on low-memory systems (<2GB RAM).
-* Configures UFW firewall (SSH + port 7777).
+* **Installs and configures nginx** with reverse proxy to strfry.
+* **Attempts SSL certificate setup** with Let's Encrypt (requires domain to be accessible).
+* Configures UFW firewall (SSH + port 7777 + HTTP/HTTPS).
 * Builds Strfry from submodule with optimal settings for your system.
 * Copies config to `$HOME/.strfry/strfry.conf`.
 * Ensures data directory exists.
