@@ -220,11 +220,19 @@ EOF
     sudo mkdir -p "$REPO_DIR/configs/dashboard"
     DASH_ENV_PATH="$REPO_DIR/configs/dashboard/dashboard.env"
     STRFRY_BIN_PATH="$STRFRY_DIR/strfry"
-    cat <<EOF | sudo tee "$DASH_ENV_PATH" >/dev/null
+    NIP11_URL_VALUE="https://${DOMAIN}"
+    # If dashboard.env exists, update only dynamic fields that depend on DOMAIN/paths
+    if [ -f "$DASH_ENV_PATH" ]; then
+        sudo sed -i "s|^STRFRY_BIN=.*$|STRFRY_BIN=${STRFRY_BIN_PATH}|" "$DASH_ENV_PATH"
+        sudo sed -i "s|^DASHBOARD_ROOT=.*$|DASHBOARD_ROOT=/var/www/relay-dashboard|" "$DASH_ENV_PATH"
+        sudo sed -i "s|^NIP11_URL=.*$|NIP11_URL=${NIP11_URL_VALUE}|" "$DASH_ENV_PATH"
+    else
+        cat <<EOF | sudo tee "$DASH_ENV_PATH" >/dev/null
 STRFRY_BIN=${STRFRY_BIN_PATH}
 DASHBOARD_ROOT=/var/www/relay-dashboard
-NIP11_URL=https://${DOMAIN}
+NIP11_URL=${NIP11_URL_VALUE}
 EOF
+    fi
 
     sudo systemctl daemon-reload
     sudo systemctl enable relay-dashboard.service
