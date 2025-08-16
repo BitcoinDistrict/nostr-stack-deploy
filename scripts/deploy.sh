@@ -8,20 +8,29 @@ REPO_DIR="$HOME/nostr-stack-deploy"
 STRFRY_DIR="$REPO_DIR/strfry"
 CONFIG_DIR="$REPO_DIR/configs"
 RUNTIME_CONFIG_DIR="$HOME/.strfry"
-DATA_DIR="$HOME/strfry-db"
+DATA_DIR="$HOME/nostr-stack-deploy/strfry-db"
 
 # -----------------------------
 # Install build dependencies
 # -----------------------------
 sudo apt-get update -y
-sudo apt-get install -y build-essential libsqlite3-dev libssl-dev pkg-config
+sudo apt-get install -y build-essential libsqlite3-dev libssl-dev pkg-config \
+    liblmdb-dev libflatbuffers-dev libsecp256k1-dev libzstd-dev zlib1g-dev
+
+# -----------------------------
+# Configure firewall
+# -----------------------------
+sudo ufw --force enable
+sudo ufw allow ssh
+sudo ufw allow 7777/tcp
+echo "✅ Firewall configured: SSH and port 7777 allowed"
 
 # -----------------------------
 # Build strfry
 # -----------------------------
 cd "$STRFRY_DIR"
-mkdir -p build && cd build
-make ..
+git submodule update --init
+make setup-golpe
 make -j$(nproc)
 
 # -----------------------------

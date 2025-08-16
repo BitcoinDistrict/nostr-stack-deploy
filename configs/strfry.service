@@ -5,7 +5,7 @@ After=network.target
 [Service]
 Type=simple
 User=deploy
-WorkingDirectory=/home/deploy/nostr-stack-deploy/strfry
+WorkingDirectory=/home/deploy/nostr-stack-deploy/strfry/build
 ExecStart=/home/deploy/nostr-stack-deploy/strfry/build/strfry --config /home/deploy/.strfry/strfry.conf
 Restart=on-failure
 RestartSec=5

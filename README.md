@@ -81,11 +81,12 @@ nostr-stack-deploy/
 * SSH access from GitHub Actions:
 
   * Add private key as `DEPLOY_SSH_KEY` secret.
-* Install dependencies (also handled by `deploy.sh`):
+* Install dependencies (automatically handled by `deploy.sh`):
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y build-essential cmake libsqlite3-dev libssl-dev pkg-config
+sudo apt-get install -y build-essential libsqlite3-dev libssl-dev pkg-config \
+    liblmdb-dev libflatbuffers-dev libsecp256k1-dev libzstd-dev zlib1g-dev
 ```
 
 ### 2. GitHub Secrets
@@ -105,6 +106,8 @@ sudo apt-get install -y build-essential cmake libsqlite3-dev libssl-dev pkg-conf
 
 ### 4. Deploy Script (`scripts/deploy.sh`)
 
+* Installs all required build dependencies.
+* Configures UFW firewall (SSH + port 7777).
 * Builds Strfry from submodule.
 * Copies config to `$HOME/.strfry/strfry.conf`.
 * Ensures data directory exists.
@@ -133,22 +136,17 @@ sudo apt-get install -y build-essential cmake libsqlite3-dev libssl-dev pkg-conf
 adduser deploy
 usermod -aG sudo deploy
 mkdir -p ~/nostr-stack-deploy
-sudo apt-get update
-sudo apt-get install -y build-essential cmake libsqlite3-dev libssl-dev pkg-config rsync
 
 # Clone the repo manually for first deploy (optional if using GitHub Actions)
 git clone --recurse-submodules git@github.com:BitcoinDistrict/nostr-stack-deploy.git ~/nostr-stack-deploy
 
-# Ensure configs are in place
-mkdir -p ~/.strfry
-cp configs/strfry.conf ~/.strfry/strfry.conf
-cp configs/strfry.service /etc/systemd/system/
-systemctl daemon-reload
-systemctl enable strfry
-systemctl start strfry
+# Run the automated deployment script
+cd ~/nostr-stack-deploy
+bash scripts/deploy.sh
 
 # Verify deployment
-journalctl -u strfry -f
+sudo systemctl status strfry
+sudo journalctl -u strfry -f
 ```
 
 ---
