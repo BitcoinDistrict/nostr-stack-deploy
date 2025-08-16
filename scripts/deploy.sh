@@ -121,7 +121,7 @@ else
     fi
 fi
 
-if [ "$CERT_STATUS" = "ok" ] && [ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]; then
+if [ "$CERT_STATUS" = "ok" ] || [ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]; then
     # Write final HTTPS-enabled config
     cat << 'EOF' | sudo tee "${NGINX_SITE_PATH}" >/dev/null
 map $http_upgrade $connection_upgrade {
