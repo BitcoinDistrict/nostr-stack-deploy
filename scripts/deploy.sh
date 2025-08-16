@@ -21,7 +21,7 @@ sudo apt-get install -y build-essential libsqlite3-dev libssl-dev pkg-config \
 # Install and configure nginx
 # -----------------------------
 echo "🌐 Installing and configuring nginx..."
-sudo apt-get install -y nginx certbot python3-certbot-nginx
+sudo apt-get install -y nginx
 
 # Copy nginx config
 sudo cp "$CONFIG_DIR/nginx/relay.bitcoindistrict.org.conf" /etc/nginx/sites-available/relay.bitcoindistrict.org
@@ -36,17 +36,7 @@ sudo nginx -t
 sudo systemctl reload nginx
 
 echo "✅ Nginx configured for relay.bitcoindistrict.org"
-
-# -----------------------------
-# Configure SSL certificate (optional - requires domain to be accessible)
-# -----------------------------
-echo "🔒 Attempting to configure SSL certificate..."
-if sudo certbot --nginx -d relay.bitcoindistrict.org --non-interactive --agree-tos --email hey@bitcoindistrict.org; then
-    echo "✅ SSL certificate configured successfully"
-else
-    echo "⚠️  SSL certificate setup failed (domain may not be accessible yet)"
-    echo "   You can run this manually later: sudo certbot --nginx -d relay.bitcoindistrict.org"
-fi
+echo "🔒 SSL is handled by Cloudflare - no local certificate needed"
 
 # -----------------------------
 # Configure swap space for memory-constrained systems
