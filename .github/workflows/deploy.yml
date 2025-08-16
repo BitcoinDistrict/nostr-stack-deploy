@@ -19,6 +19,10 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Record strfry submodule commit
+        run: |
+          git -C strfry rev-parse HEAD > strfry/.commit
+
       - name: Setup SSH
         run: |
           mkdir -p ~/.ssh

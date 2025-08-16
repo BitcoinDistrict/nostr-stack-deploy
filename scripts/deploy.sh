@@ -343,11 +343,16 @@ fi
 # -----------------------------
 # Build strfry
 # -----------------------------
+mkdir -p "$RUNTIME_CONFIG_DIR"
 cd "$STRFRY_DIR"
 
 # Determine current submodule commit (if available) and decide whether to build
 BUILD_STATE_FILE="$RUNTIME_CONFIG_DIR/strfry_build.sha"
-CURRENT_SUBMODULE_SHA="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+if [ -f ".commit" ]; then
+    CURRENT_SUBMODULE_SHA="$(cat .commit | tr -d '\r\n' || echo unknown)"
+else
+    CURRENT_SUBMODULE_SHA="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+fi
 
 if [ -x "strfry" ] && [ -f "$BUILD_STATE_FILE" ] && grep -qx "$CURRENT_SUBMODULE_SHA" "$BUILD_STATE_FILE"; then
     echo "✅ strfry already built for commit $CURRENT_SUBMODULE_SHA; skipping compilation"
