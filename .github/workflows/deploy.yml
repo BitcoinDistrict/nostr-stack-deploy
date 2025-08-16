@@ -23,9 +23,47 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          printf "%s" "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
           touch ~/.ssh/known_hosts
+
+          # Write deploy key robustly (handles raw, escaped-\n, or base64-encoded secrets)
+          SECRET="${{ secrets.DEPLOY_SSH_KEY }}"
+          KEY_PATH=~/.ssh/id_ed25519
+          TMP_KEY=~/.ssh/id_ed25519.raw
+
+          # Attempt 1: raw write (strip CR)
+          printf "%s" "$SECRET" > "$TMP_KEY"
+          tr -d '\r' < "$TMP_KEY" > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          if ssh-keygen -y -f "$KEY_PATH" >/dev/null 2>&1; then
+            echo "SSH key parsed (raw)"
+          else
+            # Attempt 2: interpret literal \n sequences as newlines
+            if command -v perl >/dev/null 2>&1; then
+              perl -0777 -pe 's/\r//g; s/\\n/\n/g' "$TMP_KEY" > "$KEY_PATH"
+            else
+              # Fallback with sed may not handle multi-line reliably in some shells
+              sed 's/\\r//g' "$TMP_KEY" | awk '{gsub(/\\n/,"\n"); printf "%s", $0}' > "$KEY_PATH"
+            fi
+            chmod 600 "$KEY_PATH"
+            if ssh-keygen -y -f "$KEY_PATH" >/dev/null 2>&1; then
+              echo "SSH key parsed (escaped newlines)"
+            else
+              # Attempt 3: base64 decode
+              if printf "%s" "$SECRET" | base64 -d > "$KEY_PATH" 2>/dev/null; then
+                chmod 600 "$KEY_PATH"
+                if ssh-keygen -y -f "$KEY_PATH" >/dev/null 2>&1; then
+                  echo "SSH key parsed (base64)"
+                else
+                  echo "Failed to parse DEPLOY_SSH_KEY (base64 decoded)." >&2
+                  exit 1
+                fi
+              else
+                echo "Failed to parse DEPLOY_SSH_KEY (raw/escaped/base64)." >&2
+                exit 1
+              fi
+            fi
+          fi
+          rm -f "$TMP_KEY"
 
       - name: Connectivity diagnostics
         run: |
