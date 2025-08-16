@@ -107,12 +107,14 @@ sudo systemctl restart strfry
 # -----------------------------
 # Post-deploy smoke test
 # -----------------------------
-STRFRY_BIN="$STRFRY_DIR/build/strfry"
+STRFRY_BIN="$STRFRY_DIR/strfry"
 if [ -x "$STRFRY_BIN" ]; then
     "$STRFRY_BIN" --config "$RUNTIME_CONFIG_DIR/strfry.conf" --version || \
     "$STRFRY_BIN" --config "$RUNTIME_CONFIG_DIR/strfry.conf" --help
     echo "✅ strfry build and deploy successful"
 else
     echo "❌ strfry binary not found or not executable"
+    echo "Expected location: $STRFRY_BIN"
+    ls -la "$STRFRY_DIR/"
     exit 1
 fi

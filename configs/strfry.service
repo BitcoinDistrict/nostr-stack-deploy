@@ -5,8 +5,8 @@ After=network.target
 [Service]
 Type=simple
 User=deploy
-WorkingDirectory=/home/deploy/nostr-stack-deploy/strfry/build
-ExecStart=/home/deploy/nostr-stack-deploy/strfry/build/strfry --config /home/deploy/.strfry/strfry.conf
+WorkingDirectory=/home/deploy/nostr-stack-deploy/strfry
+ExecStart=/home/deploy/nostr-stack-deploy/strfry/strfry --config /home/deploy/.strfry/strfry.conf
 Restart=on-failure
 RestartSec=5
 LimitNOFILE=1000000
