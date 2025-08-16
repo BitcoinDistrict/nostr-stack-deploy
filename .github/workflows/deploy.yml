@@ -77,7 +77,12 @@ jobs:
       - name: Sync repo to server
         run: |
           rsync -az -e "ssh -4 -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new -o AddressFamily=inet" \
-            --delete --exclude='.git' --exclude='strfry-db' ./ \
+            --delete \
+            --exclude='.git' \
+            --exclude='strfry-db' \
+            --exclude='strfry/strfry' \
+            --exclude='strfry/build/' \
+            ./ \
             ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:~/nostr-stack-deploy
 
       - name: Run deploy script on server

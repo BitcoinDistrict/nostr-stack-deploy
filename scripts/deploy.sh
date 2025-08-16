@@ -345,23 +345,33 @@ fi
 # -----------------------------
 cd "$STRFRY_DIR"
 
-# Check if binary already exists and is executable
-if [ -x "strfry" ]; then
-    echo "✅ strfry binary already exists, skipping compilation"
+# Determine current submodule commit (if available) and decide whether to build
+BUILD_STATE_FILE="$RUNTIME_CONFIG_DIR/strfry_build.sha"
+CURRENT_SUBMODULE_SHA="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+
+if [ -x "strfry" ] && [ -f "$BUILD_STATE_FILE" ] && grep -qx "$CURRENT_SUBMODULE_SHA" "$BUILD_STATE_FILE"; then
+    echo "✅ strfry already built for commit $CURRENT_SUBMODULE_SHA; skipping compilation"
 else
-    echo "🔨 Starting strfry compilation..."
-    
-    # Clean any previous failed builds only if binary doesn't exist
-    if [ -d "build" ]; then
-        echo "🧹 Cleaning previous build artifacts..."
-        rm -rf build/
+    if [ -x "strfry" ] && [ "$CURRENT_SUBMODULE_SHA" = "unknown" ]; then
+        echo "✅ strfry binary present and current commit unknown; skipping compilation"
+    else
+        echo "🔨 Starting strfry compilation (target commit: $CURRENT_SUBMODULE_SHA)..."
+        # Clean any previous failed builds only if we are about to compile
+        if [ -d "build" ]; then
+            echo "🧹 Cleaning previous build artifacts..."
+            rm -rf build/
+        fi
+
+        git submodule update --init
+        make setup-golpe
+
+        echo "⚡ Compiling strfry with ${MAKE_JOBS} parallel jobs..."
+        make -j${MAKE_JOBS}
     fi
-
-    git submodule update --init
-    make setup-golpe
-
-    echo "⚡ Compiling strfry with ${MAKE_JOBS} parallel jobs..."
-    make -j${MAKE_JOBS}
+    # Record the commit we compiled for (if known)
+    if [ "$CURRENT_SUBMODULE_SHA" != "unknown" ]; then
+        echo "$CURRENT_SUBMODULE_SHA" > "$BUILD_STATE_FILE"
+    fi
 fi
 
 # -----------------------------
