@@ -65,11 +65,21 @@ nostr-stack-deploy/
 │  └─ auto-bump-strfry.yml     # PR workflow for upstream updates
 ├─ scripts/
 │  └─ deploy.sh                # Server-side deploy script
+│  └─ dashboard/               # Stats generation scripts
+│     └─ generate_stats.sh
 ├─ configs/
 │  ├─ strfry.conf              # Repo-controlled Strfry config
 │  ├─ strfry.service           # Systemd service unit
 │  └─ nginx/                   # Nginx configuration files
 │     └─ relay.bitcoindistrict.org.conf
+│  └─ dashboard/               # Dashboard units and env
+│     ├─ dashboard.env
+│     ├─ relay-dashboard.service
+│     ├─ relay-dashboard-stats.service
+│     └─ relay-dashboard-stats.timer
+├─ web/
+│  └─ relay-dashboard/         # Static dashboard frontend
+│     └─ index.html
 └─ strfry/                     # Submodule pointing to Strfry upstream
 ```
 
@@ -138,6 +148,7 @@ sudo apt-get install -y build-essential libsqlite3-dev libssl-dev pkg-config \
 * Ensures data directory exists.
 * Restarts systemd service.
 * Performs a smoke test to verify binary runs with config.
+* Optionally deploys a modular dashboard (NIP-11 + lightweight stats) served as static files behind nginx. Controlled via env.
 
 ### 4.1 Deploy Configuration (Environment Variables)
 
@@ -148,12 +159,23 @@ DOMAIN=relay.bitcoindistrict.org
 CERTBOT_EMAIL=hey@bitcoindistrict.org
 CLOUDFLARE_ENABLED=false
 CLOUDFLARE_API_TOKEN=
+DASHBOARD_ENABLED=true
+DASHBOARD_DOMAIN=dashboard.relay.bitcoindistrict.org
 ```
 
 - `DOMAIN`: Relay FQDN. Must resolve to the server.
 - `CERTBOT_EMAIL`: Email used for Let's Encrypt registration/alerts.
 - `CLOUDFLARE_ENABLED`: Set `true` to use Certbot's Cloudflare DNS plugin (DNS-01).
 - `CLOUDFLARE_API_TOKEN`: Cloudflare API token with Zone DNS Edit permissions.
+- `DASHBOARD_ENABLED`: When `true`, installs static dashboard and timer to generate stats JSON.
+- `DASHBOARD_DOMAIN`: FQDN for the dashboard vhost.
+
+When the dashboard is enabled, the following are installed without touching the main relay service:
+
+- Static files to `/var/www/relay-dashboard`.
+- Separate Nginx vhost for `DASHBOARD_DOMAIN` (HTTP → HTTPS redirect; serves only static files).
+- Systemd units: `relay-dashboard.service` (provisions webroot) and `relay-dashboard-stats.timer`/`.service` (refreshes `stats.json` and cached `nip11.json`).
+- Env file at `configs/dashboard/dashboard.env` allows overriding `STRFRY_BIN`, `STRFRY_CONFIG`, `DASHBOARD_ROOT`, `NIP11_URL`.
 
 When Cloudflare is enabled, certificates are issued via DNS-01 and work with proxied (orange-cloud) DNS records. Otherwise, HTTP-01 is used via the Nginx plugin.
 
@@ -190,6 +212,8 @@ DOMAIN=relay.bitcoindistrict.org \
 CERTBOT_EMAIL=you@example.com \
 CLOUDFLARE_ENABLED=true \
 CLOUDFLARE_API_TOKEN=cf_XXXXXXXXXXXXXXXXXXXXXXXXXXXX \
+DASHBOARD_ENABLED=true \
+DASHBOARD_DOMAIN=dashboard.relay.bitcoindistrict.org \
 bash scripts/deploy.sh
 
 # Verify deployment

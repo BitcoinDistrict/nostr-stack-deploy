@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Bitcoin District Relay Dashboard</title>
+    <style>
+      :root { color-scheme: light dark; }
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Helvetica, Arial, sans-serif; margin: 0; padding: 1.5rem; line-height: 1.45; }
+      header { display: flex; align-items: baseline; gap: 1rem; margin-bottom: 1rem; }
+      h1 { font-size: 1.4rem; margin: 0; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1rem; }
+      .card { border: 1px solid #8883; border-radius: 12px; padding: 1rem; background: #0001; backdrop-filter: blur(2px); }
+      code, pre { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 0.95em; }
+      .muted { opacity: 0.7; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { text-align: left; padding: 0.25rem 0.35rem; border-bottom: 1px solid #8882; }
+      th { position: sticky; top: 0; background: #0001; }
+      .small { font-size: .9em; }
+      .row { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; }
+      input[type="text"] { padding: .4rem .6rem; border-radius: 8px; border: 1px solid #8886; background: transparent; color: inherit; }
+      .badge { display: inline-block; padding: .15rem .45rem; border: 1px solid #8884; border-radius: 999px; font-size: .85em; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Bitcoin District Nostr Relay</h1>
+      <span id="status" class="badge">Loading…</span>
+    </header>
+
+    <section class="card">
+      <div class="row">
+        <label for="relayUrl">Relay URL:</label>
+        <input id="relayUrl" type="text" size="40" />
+        <button id="refresh">Refresh</button>
+      </div>
+      <p class="small muted">NIP-11 metadata and lightweight stats are fetched client-side. No access to the relay process is required.</p>
+    </section>
+
+    <div class="grid" style="margin-top:1rem;">
+      <section class="card">
+        <h2 style="margin-top:0;">NIP-11 Info</h2>
+        <pre id="nip11" style="overflow:auto; max-height: 420px;">Loading…</pre>
+        <div class="small muted">If CORS blocks direct fetch from the relay, this page will fall back to a server-side cached copy.</div>
+      </section>
+      <section class="card">
+        <h2 style="margin-top:0;">Stats</h2>
+        <div id="stats">
+          <div class="muted small">Loading…</div>
+        </div>
+      </section>
+    </div>
+
+    <footer class="muted small" style="margin-top:1rem;">
+      <span>Generated at <span id="generatedAt">—</span></span>
+    </footer>
+
+    <script>
+      const DEFAULT_NIP11_URL = "https://relay.bitcoindistrict.org";
+      const DASHBOARD_BASE = location.origin;
+      const STATS_URL = new URL('/stats.json', DASHBOARD_BASE).toString();
+      const NIP11_CACHE_URL = new URL('/nip11.json', DASHBOARD_BASE).toString();
+
+      const relayUrlInput = document.getElementById('relayUrl');
+      const refreshBtn = document.getElementById('refresh');
+      const statusEl = document.getElementById('status');
+      const nip11El = document.getElementById('nip11');
+      const statsEl = document.getElementById('stats');
+      const generatedAtEl = document.getElementById('generatedAt');
+
+      function setStatus(text, ok=true) {
+        statusEl.textContent = text;
+        statusEl.style.borderColor = ok ? 'green' : 'crimson';
+        statusEl.style.color = ok ? 'green' : 'crimson';
+      }
+
+      function loadRelayUrl() {
+        const saved = localStorage.getItem('relayUrl');
+        const url = saved || DEFAULT_NIP11_URL;
+        relayUrlInput.value = url;
+        return url;
+      }
+
+      async function fetchNip11Info(relayUrl) {
+        // Ensure we hit the NIP-11 path
+        const url = relayUrl.replace(/\/$/, '') + '/';
+        // Some relays require explicit Accept header per NIP-11
+        try {
+          const res = await fetch(url, { headers: { 'Accept': 'application/nostr+json' } });
+          if (!res.ok) throw new Error('NIP-11 fetch failed: ' + res.status);
+          return await res.json();
+        } catch (_) {
+          // Fallback to server-side cached copy if present
+          const cached = await fetch(NIP11_CACHE_URL, { cache: 'no-store' });
+          if (cached.ok) return await cached.json();
+          throw _;
+        }
+      }
+
+      async function fetchStats() {
+        try {
+          const res = await fetch(STATS_URL, { cache: 'no-store' });
+          if (!res.ok) throw new Error('Stats missing');
+          return await res.json();
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function renderStats(data) {
+        if (!data) {
+          statsEl.innerHTML = '<div class="muted small">No stats yet. They are generated periodically on the server.</div>';
+          generatedAtEl.textContent = '—';
+          return;
+        }
+        generatedAtEl.textContent = data.generatedAt || '—';
+
+        function tableFromMap(title, map) {
+          if (!map || Object.keys(map).length === 0) return `<div class="muted small">${title}: no data</div>`;
+          const rows = Object.entries(map)
+            .sort((a,b) => b[1]-a[1])
+            .map(([k,v]) => `<tr><td>kind ${k}</td><td>${v}</td></tr>`)
+            .join('');
+          return `<div style="margin:.25rem 0 .5rem;">${title}</div><table><thead><tr><th>Metric</th><th>Count</th></tr></thead><tbody>${rows}</tbody></table>`;
+        }
+
+        const lastHour = tableFromMap('Events by kind (last hour)', data.lastHour?.eventsByKind);
+        const last24h = tableFromMap('Events by kind (last 24h)', data.last24h?.eventsByKind);
+        const uniques = typeof data.last24h?.uniquePubkeys === 'number' ? `<div class="row"><div class="badge">Unique pubkeys (24h): ${data.last24h.uniquePubkeys}</div></div>` : '';
+        statsEl.innerHTML = `${uniques}${lastHour}${last24h}`;
+      }
+
+      async function refresh() {
+        const relayUrl = relayUrlInput.value.trim();
+        localStorage.setItem('relayUrl', relayUrl);
+        setStatus('Loading…');
+        try {
+          const [nip11, stats] = await Promise.all([
+            fetchNip11Info(relayUrl),
+            fetchStats(),
+          ]);
+          nip11El.textContent = JSON.stringify(nip11, null, 2);
+          renderStats(stats);
+          setStatus('OK', true);
+        } catch (e) {
+          nip11El.textContent = 'Failed to fetch NIP-11: ' + e.message;
+          renderStats(null);
+          setStatus('Error', false);
+        }
+      }
+
+      refreshBtn.addEventListener('click', refresh);
+      relayUrlInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') refresh(); });
+      loadRelayUrl();
+      refresh();
+    </script>
+  </body>
+</html>
+
+

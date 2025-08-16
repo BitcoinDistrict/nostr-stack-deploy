@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodic generation of relay dashboard stats
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=5min
+Unit=relay-dashboard-stats.service
+
+[Install]
+WantedBy=timers.target
+
+

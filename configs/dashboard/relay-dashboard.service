@@ -1,0 +1,15 @@
+[Unit]
+Description=Relay Dashboard Static Files
+After=network.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/home/deploy/nostr-stack-deploy/configs/dashboard/dashboard.env
+ExecStart=/usr/bin/mkdir -p /var/www/relay-dashboard
+ExecStart=/usr/bin/bash -lc 'if [ ! -f /var/www/relay-dashboard/index.html ]; then cp -r /home/deploy/nostr-stack-deploy/web/relay-dashboard/* /var/www/relay-dashboard/; fi'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+
+

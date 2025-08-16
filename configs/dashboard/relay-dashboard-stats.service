@@ -1,0 +1,15 @@
+[Unit]
+Description=Generate Relay Dashboard Stats JSON
+After=network.target strfry.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/home/deploy/nostr-stack-deploy/configs/dashboard/dashboard.env
+ExecStart=/usr/bin/env bash /home/deploy/nostr-stack-deploy/scripts/dashboard/generate_stats.sh
+User=deploy
+Group=deploy
+
+[Install]
+WantedBy=multi-user.target
+
+

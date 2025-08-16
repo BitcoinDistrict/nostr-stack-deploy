@@ -22,6 +22,10 @@ CLOUDFLARE_ENABLED="${CLOUDFLARE_ENABLED:-false}"
 # Cloudflare API token with DNS edit permissions for the zone
 CLOUDFLARE_API_TOKEN="${CLOUDFLARE_API_TOKEN:-}"
 
+# Optional dashboard deployment
+DASHBOARD_ENABLED="${DASHBOARD_ENABLED:-false}"
+DASHBOARD_DOMAIN="${DASHBOARD_DOMAIN:-dashboard.relay.bitcoindistrict.org}"
+
 # -----------------------------
 # Install build dependencies
 # -----------------------------
@@ -33,7 +37,7 @@ sudo apt-get install -y build-essential libsqlite3-dev libssl-dev pkg-config \
 # Install and configure nginx
 # -----------------------------
 echo "🌐 Installing and configuring nginx..."
-sudo apt-get install -y nginx certbot python3-certbot-nginx python3-certbot-dns-cloudflare
+sudo apt-get install -y nginx certbot python3-certbot-nginx python3-certbot-dns-cloudflare jq
 
 # Prepare an initial HTTP-only config to serve the domain prior to certificate issuance
 NGINX_SITE_PATH="/etc/nginx/sites-available/${DOMAIN}"
@@ -121,6 +125,116 @@ else
     fi
 fi
 
+# -----------------------------
+# Optional: Deploy static dashboard
+# -----------------------------
+if [ "$DASHBOARD_ENABLED" = "true" ]; then
+    echo "📊 Installing dashboard (domain: ${DASHBOARD_DOMAIN})..."
+
+    DASHBOARD_SITE_PATH="/etc/nginx/sites-available/${DASHBOARD_DOMAIN}"
+
+    # HTTP-only vhost for ACME and initial serve
+    cat << 'EOF' | sudo tee "${DASHBOARD_SITE_PATH}" >/dev/null
+server {
+    listen 80;
+    server_name DASHBOARD_DOMAIN_PLACEHOLDER;
+
+    root /var/www/relay-dashboard;
+    index index.html;
+
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+EOF
+    sudo sed -i "s/DASHBOARD_DOMAIN_PLACEHOLDER/${DASHBOARD_DOMAIN}/g" "${DASHBOARD_SITE_PATH}"
+    sudo ln -sf "${DASHBOARD_SITE_PATH}" "/etc/nginx/sites-enabled/${DASHBOARD_DOMAIN}"
+    sudo mkdir -p /var/www/relay-dashboard
+    sudo nginx -t && sudo systemctl reload nginx
+
+    echo "🔒 Obtaining Let's Encrypt certificate for ${DASHBOARD_DOMAIN}..."
+    DASH_CERT_STATUS="failed"
+    if [ "$CLOUDFLARE_ENABLED" = "true" ] && [ -n "$CLOUDFLARE_API_TOKEN" ]; then
+        CLOUDFLARE_INI="/etc/letsencrypt/cloudflare.ini"
+        sudo mkdir -p "/etc/letsencrypt"
+        echo "dns_cloudflare_api_token = ${CLOUDFLARE_API_TOKEN}" | sudo tee "$CLOUDFLARE_INI" >/dev/null
+        sudo chmod 600 "$CLOUDFLARE_INI"
+        if sudo certbot certonly \
+                --dns-cloudflare \
+                --dns-cloudflare-credentials "$CLOUDFLARE_INI" \
+                --dns-cloudflare-propagation-seconds 60 \
+                -d "$DASHBOARD_DOMAIN" \
+                --non-interactive --agree-tos -m "$CERTBOT_EMAIL"; then
+            DASH_CERT_STATUS="ok"
+        fi
+    else
+        if sudo certbot certonly --nginx -d "$DASHBOARD_DOMAIN" --non-interactive --agree-tos -m "$CERTBOT_EMAIL"; then
+            DASH_CERT_STATUS="ok"
+        fi
+    fi
+
+    if [ "$DASH_CERT_STATUS" = "ok" ] || [ -f "/etc/letsencrypt/live/${DASHBOARD_DOMAIN}/fullchain.pem" ]; then
+        cat << 'EOF' | sudo tee "${DASHBOARD_SITE_PATH}" >/dev/null
+server {
+    listen 80;
+    server_name DASHBOARD_DOMAIN_PLACEHOLDER;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name DASHBOARD_DOMAIN_PLACEHOLDER;
+
+    ssl_certificate /etc/letsencrypt/live/DASHBOARD_DOMAIN_PLACEHOLDER/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/DASHBOARD_DOMAIN_PLACEHOLDER/privkey.pem;
+
+    root /var/www/relay-dashboard;
+    index index.html;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+    }
+}
+EOF
+        sudo sed -i "s/DASHBOARD_DOMAIN_PLACEHOLDER/${DASHBOARD_DOMAIN}/g" "${DASHBOARD_SITE_PATH}"
+        sudo nginx -t && sudo systemctl reload nginx
+        echo "✅ Dashboard HTTPS config enabled for ${DASHBOARD_DOMAIN}"
+    else
+        echo "⚠️  Could not obtain HTTPS for dashboard; serving HTTP-only for now."
+    fi
+
+    # Install static assets
+    sudo mkdir -p /var/www/relay-dashboard
+    sudo cp -r "$REPO_DIR/web/relay-dashboard/"* /var/www/relay-dashboard/
+
+    # Install systemd units for initial webroot and stats generation
+    sudo cp "$REPO_DIR/configs/dashboard/relay-dashboard.service" /etc/systemd/system/
+    sudo cp "$REPO_DIR/configs/dashboard/relay-dashboard-stats.service" /etc/systemd/system/
+    sudo cp "$REPO_DIR/configs/dashboard/relay-dashboard-stats.timer" /etc/systemd/system/
+
+    # Write environment file with resolved paths
+    sudo mkdir -p "$REPO_DIR/configs/dashboard"
+    DASH_ENV_PATH="$REPO_DIR/configs/dashboard/dashboard.env"
+    STRFRY_BIN_PATH="$STRFRY_DIR/strfry"
+    cat <<EOF | sudo tee "$DASH_ENV_PATH" >/dev/null
+STRFRY_BIN=${STRFRY_BIN_PATH}
+DASHBOARD_ROOT=/var/www/relay-dashboard
+NIP11_URL=https://${DOMAIN}
+EOF
+
+    sudo systemctl daemon-reload
+    sudo systemctl enable relay-dashboard.service
+    sudo systemctl start relay-dashboard.service
+    sudo systemctl enable relay-dashboard-stats.timer
+    sudo systemctl start relay-dashboard-stats.timer
+    echo "✅ Dashboard installed"
+else
+    echo "ℹ️  Dashboard disabled (set DASHBOARD_ENABLED=true to enable)"
+fi
 if [ "$CERT_STATUS" = "ok" ] || [ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]; then
     # Write final HTTPS-enabled config
     cat << 'EOF' | sudo tee "${NGINX_SITE_PATH}" >/dev/null
