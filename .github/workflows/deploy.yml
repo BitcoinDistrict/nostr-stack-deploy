@@ -27,6 +27,15 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           touch ~/.ssh/known_hosts
 
+      - name: Connectivity diagnostics
+        run: |
+          echo "Host: ${{ secrets.DEPLOY_HOST }}"
+          getent ahostsv4 ${{ secrets.DEPLOY_HOST }} || true
+          which nc >/dev/null 2>&1 && nc -vz -4 ${{ secrets.DEPLOY_HOST }} 22 || true
+          ssh -4 -i ~/.ssh/id_ed25519 -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} 'echo SSH_OK' || true
+          echo "Derived deploy key public (for comparison with authorized_keys):"
+          ssh-keygen -y -f ~/.ssh/id_ed25519 | sed 's/^/  /'
+
       - name: Sync repo to server
         run: |
           rsync -az -e "ssh -4 -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new -o AddressFamily=inet" \
