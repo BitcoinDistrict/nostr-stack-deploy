@@ -92,6 +92,14 @@ else
 fi
 
 # -----------------------------
+# Ensure default config doesn't interfere
+# -----------------------------
+if [ -f "strfry.conf" ]; then
+    echo "📋 Backing up default strfry config to prevent interference..."
+    mv strfry.conf strfry.conf.default
+fi
+
+# -----------------------------
 # Deploy runtime config
 # -----------------------------
 mkdir -p "$RUNTIME_CONFIG_DIR"
