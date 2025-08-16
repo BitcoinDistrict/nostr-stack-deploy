@@ -37,7 +37,7 @@ sudo apt-get install -y nginx certbot python3-certbot-nginx python3-certbot-dns-
 
 # Prepare an initial HTTP-only config to serve the domain prior to certificate issuance
 NGINX_SITE_PATH="/etc/nginx/sites-available/${DOMAIN}"
-sudo bash -c "cat > \"${NGINX_SITE_PATH}\" << 'EOF'
+cat << 'EOF' | sudo tee "${NGINX_SITE_PATH}" >/dev/null
 map $http_upgrade $connection_upgrade {
     default upgrade;
     ''      close;
@@ -73,7 +73,7 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
-EOF"
+EOF
 
 # Replace placeholder domain
 sudo sed -i "s/DOMAIN_PLACEHOLDER/${DOMAIN}/g" "${NGINX_SITE_PATH}"
@@ -123,7 +123,7 @@ fi
 
 if [ "$CERT_STATUS" = "ok" ] && [ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]; then
     # Write final HTTPS-enabled config
-    sudo bash -c "cat > \"${NGINX_SITE_PATH}\" << 'EOF'
+    cat << 'EOF' | sudo tee "${NGINX_SITE_PATH}" >/dev/null
 map $http_upgrade $connection_upgrade {
     default upgrade;
     ''      close;
@@ -163,7 +163,7 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 }
-EOF"
+EOF
     sudo sed -i "s/DOMAIN_PLACEHOLDER/${DOMAIN}/g" "${NGINX_SITE_PATH}"
 
     sudo nginx -t
