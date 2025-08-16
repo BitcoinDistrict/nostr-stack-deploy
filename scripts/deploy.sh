@@ -207,9 +207,10 @@ EOF
         echo "⚠️  Could not obtain HTTPS for dashboard; serving HTTP-only for now."
     fi
 
-    # Install static assets
+    # Install static assets and ensure writable by dashboard service user
     sudo mkdir -p /var/www/relay-dashboard
     sudo cp -r "$REPO_DIR/web/relay-dashboard/"* /var/www/relay-dashboard/
+    sudo chown -R deploy:deploy /var/www/relay-dashboard
 
     # Install systemd units for initial webroot and stats generation
     sudo cp "$REPO_DIR/configs/dashboard/relay-dashboard.service" /etc/systemd/system/
@@ -221,15 +222,22 @@ EOF
     DASH_ENV_PATH="$REPO_DIR/configs/dashboard/dashboard.env"
     STRFRY_BIN_PATH="$STRFRY_DIR/strfry"
     NIP11_URL_VALUE="https://${DOMAIN}"
+    STRFRY_CONFIG_VALUE="$RUNTIME_CONFIG_DIR/strfry.conf"
     # If dashboard.env exists, update only dynamic fields that depend on DOMAIN/paths
     if [ -f "$DASH_ENV_PATH" ]; then
         sudo sed -i "s|^STRFRY_BIN=.*$|STRFRY_BIN=${STRFRY_BIN_PATH}|" "$DASH_ENV_PATH"
         sudo sed -i "s|^DASHBOARD_ROOT=.*$|DASHBOARD_ROOT=/var/www/relay-dashboard|" "$DASH_ENV_PATH"
+        if grep -q '^STRFRY_CONFIG=' "$DASH_ENV_PATH"; then
+            sudo sed -i "s|^STRFRY_CONFIG=.*$|STRFRY_CONFIG=${STRFRY_CONFIG_VALUE}|" "$DASH_ENV_PATH"
+        else
+            echo "STRFRY_CONFIG=${STRFRY_CONFIG_VALUE}" | sudo tee -a "$DASH_ENV_PATH" >/dev/null
+        fi
         sudo sed -i "s|^NIP11_URL=.*$|NIP11_URL=${NIP11_URL_VALUE}|" "$DASH_ENV_PATH"
     else
         cat <<EOF | sudo tee "$DASH_ENV_PATH" >/dev/null
 STRFRY_BIN=${STRFRY_BIN_PATH}
 DASHBOARD_ROOT=/var/www/relay-dashboard
+STRFRY_CONFIG=${STRFRY_CONFIG_VALUE}
 NIP11_URL=${NIP11_URL_VALUE}
 EOF
     fi
@@ -239,6 +247,8 @@ EOF
     sudo systemctl start relay-dashboard.service
     sudo systemctl enable relay-dashboard-stats.timer
     sudo systemctl start relay-dashboard-stats.timer
+    # Generate stats and nip11 cache immediately for initial page load
+    sudo systemctl start relay-dashboard-stats.service || true
     echo "✅ Dashboard installed"
 else
     echo "ℹ️  Dashboard disabled (set DASHBOARD_ENABLED=true to enable)"
