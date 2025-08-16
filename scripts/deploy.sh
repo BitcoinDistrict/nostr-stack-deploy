@@ -14,14 +14,14 @@ DATA_DIR="$HOME/strfry-db"
 # Install build dependencies
 # -----------------------------
 sudo apt-get update -y
-sudo apt-get install -y build-essential cmake libsqlite3-dev libssl-dev pkg-config
+sudo apt-get install -y build-essential libsqlite3-dev libssl-dev pkg-config
 
 # -----------------------------
 # Build strfry
 # -----------------------------
 cd "$STRFRY_DIR"
 mkdir -p build && cd build
-cmake ..
+make ..
 make -j$(nproc)
 
 # -----------------------------
