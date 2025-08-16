@@ -1,0 +1,3 @@
+[submodule "strfry"]
+	path = strfry
+	url = https://github.com/hoytech/strfry

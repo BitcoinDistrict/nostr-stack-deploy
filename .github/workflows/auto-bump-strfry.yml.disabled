@@ -1,0 +1,82 @@
+name: Auto Bump Strfry Submodule
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # daily at midnight UTC
+  workflow_dispatch:      # manual trigger
+
+jobs:
+  bump-submodule:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Check for latest upstream commit
+        id: check
+        run: |
+          cd strfry
+          git fetch origin
+          LATEST_SHA=$(git rev-parse origin/main)
+          cd ..
+          CURRENT_SHA=$(git ls-tree HEAD strfry | awk '{print $3}')
+
+          echo "current_sha=$CURRENT_SHA" >> $GITHUB_OUTPUT
+          echo "latest_sha=$LATEST_SHA" >> $GITHUB_OUTPUT
+
+          if [ "$CURRENT_SHA" = "$LATEST_SHA" ]; then
+            echo "✅ strfry is already up to date"
+            exit 0
+          fi
+
+          echo "⬆️ New upstream commit found: $LATEST_SHA"
+
+      - name: Update submodule to latest
+        run: |
+          cd strfry
+          git checkout ${{ steps.check.outputs.latest_sha }}
+          cd ..
+          git add strfry
+          git commit -m "chore: bump strfry submodule to ${{ steps.check.outputs.latest_sha }}"
+          git push origin HEAD:bump-strfry-submodule || true
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y build-essential cmake libsqlite3-dev libssl-dev pkg-config
+
+      - name: Build strfry (smoke test)
+        run: |
+          cd strfry
+          mkdir -p build && cd build
+          cmake ..
+          make -j$(nproc)
+
+      - name: Runtime sanity check
+        run: |
+          ./strfry/build/strfry --version || ./strfry/build/strfry --help
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: bump-strfry-submodule
+          commit-message: "chore: bump strfry submodule"
+          title: "⬆️ Bump strfry submodule"
+          body: |
+            This PR updates the `strfry` submodule to the latest upstream commit.
+
+            - Previous SHA: ${{ steps.check.outputs.current_sha }}
+            - New SHA: ${{ steps.check.outputs.latest_sha }}
+
+            ✅ Verified that strfry builds and passes runtime sanity check.
+          base: main

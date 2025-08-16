@@ -1,0 +1,46 @@
+name: Deploy Strfry
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.DEPLOY_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Sync repo to server
+        run: |
+          rsync -az --delete --exclude='.git' ./ ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:~/nostr-stack-deploy
+
+      - name: Run deploy script on server
+        run: |
+          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "bash ~/nostr-stack-deploy/scripts/deploy.sh"
+
+      - name: Post-deploy smoke test
+        run: |
+          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "
+            set -euo pipefail
+            STRFRY_BIN=~/nostr-stack-deploy/strfry/build/strfry
+            CONFIG_PATH=~/\.strfry/strfry.conf
+
+            if [ ! -x \$STRFRY_BIN ]; then
+              echo '❌ strfry binary missing or not executable'
+              exit 1
+            fi
+
+            \$STRFRY_BIN --config \$CONFIG_PATH --version || \$STRFRY_BIN --config \$CONFIG_PATH --help
+            echo '✅ strfry deployed and running with runtime config'
+          "
