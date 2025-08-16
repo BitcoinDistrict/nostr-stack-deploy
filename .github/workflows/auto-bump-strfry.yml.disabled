@@ -52,18 +52,19 @@ jobs:
       - name: Install build dependencies
         run: |
           sudo apt-get update -y
-          sudo apt-get install -y build-essential cmake libsqlite3-dev libssl-dev pkg-config
+          sudo apt-get install -y build-essential libsqlite3-dev libssl-dev pkg-config \
+            liblmdb-dev libflatbuffers-dev libsecp256k1-dev libzstd-dev zlib1g-dev
 
       - name: Build strfry (smoke test)
         run: |
           cd strfry
-          mkdir -p build && cd build
-          cmake ..
+          git submodule update --init
+          make setup-golpe
           make -j$(nproc)
 
       - name: Runtime sanity check
         run: |
-          ./strfry/build/strfry --version || ./strfry/build/strfry --help
+          ./strfry/strfry --version || ./strfry/strfry --help
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v5

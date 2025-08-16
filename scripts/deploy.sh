@@ -70,20 +70,26 @@ fi
 # -----------------------------
 # Build strfry
 # -----------------------------
-echo "🔨 Starting strfry compilation..."
 cd "$STRFRY_DIR"
 
-# Clean any previous failed builds
-if [ -d "build" ]; then
-    echo "🧹 Cleaning previous build artifacts..."
-    rm -rf build/
+# Check if binary already exists and is executable
+if [ -x "strfry" ]; then
+    echo "✅ strfry binary already exists, skipping compilation"
+else
+    echo "🔨 Starting strfry compilation..."
+    
+    # Clean any previous failed builds only if binary doesn't exist
+    if [ -d "build" ]; then
+        echo "🧹 Cleaning previous build artifacts..."
+        rm -rf build/
+    fi
+
+    git submodule update --init
+    make setup-golpe
+
+    echo "⚡ Compiling strfry with ${MAKE_JOBS} parallel jobs..."
+    make -j${MAKE_JOBS}
 fi
-
-git submodule update --init
-make setup-golpe
-
-echo "⚡ Compiling strfry with ${MAKE_JOBS} parallel jobs..."
-make -j${MAKE_JOBS}
 
 # -----------------------------
 # Deploy runtime config
