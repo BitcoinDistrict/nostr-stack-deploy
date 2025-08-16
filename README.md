@@ -129,13 +129,33 @@ sudo apt-get install -y build-essential libsqlite3-dev libssl-dev pkg-config \
 * **Automatically configures swap space** for memory-constrained systems.
 * **Adaptive compilation** - uses single-threaded compilation on low-memory systems (<2GB RAM).
 * **Installs and configures nginx** with reverse proxy to strfry.
-* **Attempts SSL certificate setup** with Let's Encrypt (requires domain to be accessible).
+* **Obtains SSL certificates with Let's Encrypt** using either:
+  - HTTP-01 via the Nginx plugin (default), or
+  - DNS-01 via Cloudflare (when enabled), which works with proxied orange-cloud records.
 * Configures UFW firewall (SSH + port 7777 + HTTP/HTTPS).
 * Builds Strfry from submodule with optimal settings for your system.
 * Copies config to `$HOME/.strfry/strfry.conf`.
 * Ensures data directory exists.
 * Restarts systemd service.
 * Performs a smoke test to verify binary runs with config.
+
+### 4.1 Deploy Configuration (Environment Variables)
+
+You can customize the deployment via environment variables:
+
+```
+DOMAIN=relay.bitcoindistrict.org
+CERTBOT_EMAIL=hey@bitcoindistrict.org
+CLOUDFLARE_ENABLED=false
+CLOUDFLARE_API_TOKEN=
+```
+
+- `DOMAIN`: Relay FQDN. Must resolve to the server.
+- `CERTBOT_EMAIL`: Email used for Let's Encrypt registration/alerts.
+- `CLOUDFLARE_ENABLED`: Set `true` to use Certbot's Cloudflare DNS plugin (DNS-01).
+- `CLOUDFLARE_API_TOKEN`: Cloudflare API token with Zone DNS Edit permissions.
+
+When Cloudflare is enabled, certificates are issued via DNS-01 and work with proxied (orange-cloud) DNS records. Otherwise, HTTP-01 is used via the Nginx plugin.
 
 ### 5. Workflows
 
@@ -164,7 +184,12 @@ mkdir -p ~/nostr-stack-deploy
 git clone --recurse-submodules git@github.com:BitcoinDistrict/nostr-stack-deploy.git ~/nostr-stack-deploy
 
 # Run the automated deployment script
+# Optionally set environment variables inline
 cd ~/nostr-stack-deploy
+DOMAIN=relay.bitcoindistrict.org \
+CERTBOT_EMAIL=you@example.com \
+CLOUDFLARE_ENABLED=true \
+CLOUDFLARE_API_TOKEN=cf_XXXXXXXXXXXXXXXXXXXXXXXXXXXX \
 bash scripts/deploy.sh
 
 # Verify deployment

@@ -11,6 +11,18 @@ RUNTIME_CONFIG_DIR="$HOME/.strfry"
 DATA_DIR="$HOME/nostr-stack-deploy/strfry-db"
 
 # -----------------------------
+# Configurable params (env-overridable)
+# -----------------------------
+# Domain for the relay (e.g., relay.example.com)
+DOMAIN="${DOMAIN:-relay.bitcoindistrict.org}"
+# Email for Let's Encrypt/Certbot registration
+CERTBOT_EMAIL="${CERTBOT_EMAIL:-hey@bitcoindistrict.org}"
+# Enable Cloudflare DNS validation for ACME (set to "true" to enable)
+CLOUDFLARE_ENABLED="${CLOUDFLARE_ENABLED:-false}"
+# Cloudflare API token with DNS edit permissions for the zone
+CLOUDFLARE_API_TOKEN="${CLOUDFLARE_API_TOKEN:-}"
+
+# -----------------------------
 # Install build dependencies
 # -----------------------------
 sudo apt-get update -y
@@ -21,22 +33,148 @@ sudo apt-get install -y build-essential libsqlite3-dev libssl-dev pkg-config \
 # Install and configure nginx
 # -----------------------------
 echo "🌐 Installing and configuring nginx..."
-sudo apt-get install -y nginx
+sudo apt-get install -y nginx certbot python3-certbot-nginx python3-certbot-dns-cloudflare
 
-# Copy nginx config
-sudo cp "$CONFIG_DIR/nginx/relay.bitcoindistrict.org.conf" /etc/nginx/sites-available/relay.bitcoindistrict.org
+# Prepare an initial HTTP-only config to serve the domain prior to certificate issuance
+NGINX_SITE_PATH="/etc/nginx/sites-available/${DOMAIN}"
+sudo bash -c "cat > \"${NGINX_SITE_PATH}\" << 'EOF'
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
 
-# Enable the site
-sudo ln -sf /etc/nginx/sites-available/relay.bitcoindistrict.org /etc/nginx/sites-enabled/
+# Prefer Cloudflare's client IP if present, otherwise use remote_addr
+map $http_cf_connecting_ip $client_ip {
+    default $http_cf_connecting_ip;
+    ''      $remote_addr;
+}
 
-# Test nginx config
+upstream strfry_ws {
+    server 127.0.0.1:7777;
+}
+
+server {
+    listen 80;
+    server_name DOMAIN_PLACEHOLDER;
+
+    # Allow ACME HTTP-01 if needed
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    location / {
+        proxy_pass http://strfry_ws;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $client_ip;
+        proxy_set_header X-Forwarded-For $client_ip;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+EOF"
+
+# Replace placeholder domain
+sudo sed -i "s/DOMAIN_PLACEHOLDER/${DOMAIN}/g" "${NGINX_SITE_PATH}"
+
+# Enable the site and ensure webroot exists
+sudo ln -sf "${NGINX_SITE_PATH}" "/etc/nginx/sites-enabled/${DOMAIN}"
+sudo mkdir -p /var/www/certbot
+
+# Test and reload nginx
 sudo nginx -t
-
-# Reload nginx
 sudo systemctl reload nginx
 
-echo "✅ Nginx configured for relay.bitcoindistrict.org"
-echo "🔒 SSL is handled by Cloudflare - no local certificate needed"
+echo "✅ Nginx HTTP config enabled for ${DOMAIN}"
+
+# -----------------------------
+# Configure SSL certificate for Cloudflare Full Strict mode
+# -----------------------------
+echo "🔒 Obtaining Let's Encrypt certificate for ${DOMAIN}..."
+CERT_STATUS="failed"
+if [ "$CLOUDFLARE_ENABLED" = "true" ] && [ -n "$CLOUDFLARE_API_TOKEN" ]; then
+    echo "   Using Cloudflare DNS-01 challenge (suitable for proxied orange-cloud records)"
+    CLOUDFLARE_INI="/etc/letsencrypt/cloudflare.ini"
+    sudo mkdir -p "/etc/letsencrypt"
+    echo "dns_cloudflare_api_token = ${CLOUDFLARE_API_TOKEN}" | sudo tee "$CLOUDFLARE_INI" >/dev/null
+    sudo chmod 600 "$CLOUDFLARE_INI"
+
+    if sudo certbot certonly \
+            --dns-cloudflare \
+            --dns-cloudflare-credentials "$CLOUDFLARE_INI" \
+            --dns-cloudflare-propagation-seconds 60 \
+            -d "$DOMAIN" \
+            --non-interactive --agree-tos -m "$CERTBOT_EMAIL"; then
+        echo "✅ Certificate obtained via Cloudflare DNS"
+        CERT_STATUS="ok"
+    else
+        echo "❌ Failed to obtain certificate via Cloudflare DNS"
+    fi
+else
+    echo "   Using Nginx HTTP-01 challenge (ensure DNS is pointing to this server; proxy can be orange or gray)"
+    if sudo certbot certonly --nginx -d "$DOMAIN" --non-interactive --agree-tos -m "$CERTBOT_EMAIL"; then
+        echo "✅ Certificate obtained via Nginx HTTP-01"
+        CERT_STATUS="ok"
+    else
+        echo "❌ Failed to obtain certificate via Nginx HTTP-01"
+    fi
+fi
+
+if [ "$CERT_STATUS" = "ok" ] && [ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]; then
+    # Write final HTTPS-enabled config
+    sudo bash -c "cat > \"${NGINX_SITE_PATH}\" << 'EOF'
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    ''      close;
+}
+
+# Prefer Cloudflare's client IP if present, otherwise use remote_addr
+map $http_cf_connecting_ip $client_ip {
+    default $http_cf_connecting_ip;
+    ''      $remote_addr;
+}
+
+upstream strfry_ws {
+    server 127.0.0.1:7777;
+}
+
+server {
+    listen 80;
+    server_name DOMAIN_PLACEHOLDER;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name DOMAIN_PLACEHOLDER;
+
+    ssl_certificate /etc/letsencrypt/live/DOMAIN_PLACEHOLDER/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/DOMAIN_PLACEHOLDER/privkey.pem;
+
+    location / {
+        proxy_pass http://strfry_ws;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection $connection_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $client_ip;
+        proxy_set_header X-Forwarded-For $client_ip;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+EOF"
+    sudo sed -i "s/DOMAIN_PLACEHOLDER/${DOMAIN}/g" "${NGINX_SITE_PATH}"
+
+    sudo nginx -t
+    sudo systemctl reload nginx
+
+    echo "✅ Nginx HTTPS config enabled for ${DOMAIN}"
+    echo "   If using Cloudflare, set SSL mode to 'Full (strict)'"
+else
+    echo "⚠️  Certificate not available; keeping HTTP-only config for now."
+    echo "   You can re-run cert issuance later once DNS is ready."
+fi
 
 # -----------------------------
 # Configure swap space for memory-constrained systems
@@ -62,9 +200,8 @@ fi
 # -----------------------------
 sudo ufw --force enable
 sudo ufw allow ssh
-sudo ufw allow 7777/tcp
 sudo ufw allow 'Nginx Full'  # Allow HTTP (80) and HTTPS (443)
-echo "✅ Firewall configured: SSH, port 7777, and Nginx (HTTP/HTTPS) allowed"
+echo "✅ Firewall configured: SSH and Nginx (HTTP/HTTPS) allowed"
 
 # -----------------------------
 # Determine optimal compilation settings based on available memory
