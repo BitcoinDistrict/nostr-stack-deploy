@@ -264,6 +264,9 @@ fi
 mkdir -p "$RUNTIME_CONFIG_DIR"
 cp "$CONFIG_DIR/strfry.conf" "$RUNTIME_CONFIG_DIR/strfry.conf"
 
+# Ensure plugin is executable
+chmod +x "$REPO_DIR/plugins/nip05_gate.py"
+
 # -----------------------------
 # Ensure data directory exists
 # -----------------------------
