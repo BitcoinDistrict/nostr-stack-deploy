@@ -5,6 +5,14 @@ on:
     - cron: '0 0 * * *'  # daily at midnight UTC
   workflow_dispatch:      # manual trigger
 
+concurrency:
+  group: auto-bump-strfry
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
 jobs:
   bump-submodule:
     runs-on: ubuntu-latest
@@ -32,6 +40,11 @@ jobs:
 
           echo "current_sha=$CURRENT_SHA" >> $GITHUB_OUTPUT
           echo "latest_sha=$LATEST_SHA" >> $GITHUB_OUTPUT
+          if [ "$CURRENT_SHA" = "$LATEST_SHA" ]; then
+            echo "update_needed=false" >> $GITHUB_OUTPUT
+          else
+            echo "update_needed=true" >> $GITHUB_OUTPUT
+          fi
 
           if [ "$CURRENT_SHA" = "$LATEST_SHA" ]; then
             echo "✅ strfry is already up to date"
@@ -41,6 +54,7 @@ jobs:
           echo "⬆️ New upstream commit found: $LATEST_SHA"
 
       - name: Update submodule to latest
+        if: steps.check.outputs.update_needed == 'true'
         run: |
           cd strfry
           git checkout ${{ steps.check.outputs.latest_sha }}
@@ -50,12 +64,14 @@ jobs:
           git push origin HEAD:bump-strfry-submodule || true
 
       - name: Install build dependencies
+        if: steps.check.outputs.update_needed == 'true'
         run: |
           sudo apt-get update -y
           sudo apt-get install -y build-essential libsqlite3-dev libssl-dev pkg-config \
             liblmdb-dev libflatbuffers-dev libsecp256k1-dev libzstd-dev zlib1g-dev
 
       - name: Build strfry (smoke test)
+        if: steps.check.outputs.update_needed == 'true'
         run: |
           cd strfry
           git submodule update --init
@@ -63,10 +79,12 @@ jobs:
           make -j$(nproc)
 
       - name: Runtime sanity check
+        if: steps.check.outputs.update_needed == 'true'
         run: |
           ./strfry/strfry --version || ./strfry/strfry --help
 
       - name: Create Pull Request
+        if: steps.check.outputs.update_needed == 'true'
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -81,3 +99,4 @@ jobs:
 
             ✅ Verified that strfry builds and passes runtime sanity check.
           base: main
+

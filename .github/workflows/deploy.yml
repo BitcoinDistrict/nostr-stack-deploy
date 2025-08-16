@@ -3,6 +3,11 @@ name: Deploy Strfry
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -23,17 +28,24 @@ jobs:
 
       - name: Sync repo to server
         run: |
-          rsync -az --delete --exclude='.git' ./ ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:~/nostr-stack-deploy
+          rsync -az --delete --exclude='.git' --exclude='strfry-db' ./ ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }}:~/nostr-stack-deploy
 
       - name: Run deploy script on server
         run: |
-          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "bash ~/nostr-stack-deploy/scripts/deploy.sh"
+          ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "\
+            DOMAIN=${{ secrets.RELAY_DOMAIN }} \\
+            CERTBOT_EMAIL=${{ secrets.CERTBOT_EMAIL }} \\
+            DASHBOARD_ENABLED=${{ vars.DASHBOARD_ENABLED }} \\
+            DASHBOARD_DOMAIN=${{ secrets.DASHBOARD_DOMAIN }} \\
+            CLOUDFLARE_ENABLED=${{ vars.CLOUDFLARE_ENABLED }} \\
+            CLOUDFLARE_API_TOKEN=${{ secrets.CLOUDFLARE_API_TOKEN }} \\
+            bash ~/nostr-stack-deploy/scripts/deploy.sh"
 
       - name: Post-deploy smoke test
         run: |
           ssh ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "
             set -euo pipefail
-            STRFRY_BIN=~/nostr-stack-deploy/strfry/build/strfry
+            STRFRY_BIN=~/nostr-stack-deploy/strfry/strfry
             CONFIG_PATH=~/\.strfry/strfry.conf
 
             if [ ! -x \$STRFRY_BIN ]; then
