@@ -446,10 +446,30 @@ server {
         proxy_set_header X-Forwarded-For $client_ip;
         proxy_set_header X-Forwarded-Proto $scheme;
         client_max_body_size BLOSSOM_MAX_UPLOAD_MB_PLACEHOLDERm;
+        # CORS headers for public endpoints
+        add_header Access-Control-Allow-Origin $http_origin always;
+        add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Authorization, Content-Type, X-NIP05, Accept, Origin" always;
+        add_header Access-Control-Allow-Credentials "true" always;
+        add_header Access-Control-Expose-Headers "Location, Content-Location, ETag" always;
+        add_header Vary "Origin" always;
     }
 
     # Upload endpoints (protect with auth_request when gate enabled)
     location /upload {
+        # CORS preflight without auth
+        if ($request_method = OPTIONS) {
+            add_header Access-Control-Allow-Origin $http_origin always;
+            add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Authorization, Content-Type, X-NIP05, Accept, Origin" always;
+            add_header Access-Control-Allow-Credentials "true" always;
+            add_header Access-Control-Max-Age 86400 always;
+            add_header Access-Control-Expose-Headers "Location, Content-Location, ETag" always;
+            add_header Vary "Origin" always;
+            add_header Content-Length 0;
+            add_header Content-Type text/plain;
+            return 204;
+        }
         # Gate modes: nip05/allowlist -> require auth; open -> no auth
         auth_request /__auth;
         proxy_pass http://blossom_upstream;
@@ -458,6 +478,13 @@ server {
         proxy_set_header X-Forwarded-For $client_ip;
         proxy_set_header X-Forwarded-Proto $scheme;
         client_max_body_size BLOSSOM_MAX_UPLOAD_MB_PLACEHOLDERm;
+        # CORS headers on actual requests
+        add_header Access-Control-Allow-Origin $http_origin always;
+        add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
+        add_header Access-Control-Allow-Headers "Authorization, Content-Type, X-NIP05, Accept, Origin" always;
+        add_header Access-Control-Allow-Credentials "true" always;
+        add_header Access-Control-Expose-Headers "Location, Content-Location, ETag" always;
+        add_header Vary "Origin" always;
     }
 
     location = /__auth {
