@@ -334,6 +334,7 @@ EOF"
 BLOSSOM_CONTAINER_IMAGE=${BLOSSOM_CONTAINER_IMAGE}
 BLOSSOM_PORT=${BLOSSOM_PORT}
 EOF"
+    # Auth proxy env (nostr-auth-proxy)
     sudo bash -c "cat > /etc/default/nostr-auth-proxy <<EOF
 NOSTR_AUTH_PORT=${NOSTR_AUTH_PORT}
 NOSTR_AUTH_GATE_MODE=${NOSTR_AUTH_GATE_MODE}
@@ -342,7 +343,7 @@ NOSTR_AUTH_LOG_LEVEL=${NOSTR_AUTH_LOG_LEVEL}
 NOSTR_AUTH_ALLOWLIST_FILE=${NOSTR_AUTH_ALLOWLIST_FILE}
 EOF"
 
-    # Install systemd units (standalone auth proxy + blossom)
+    # Install systemd units (auth proxy + blossom)
     sudo cp "$REPO_DIR/configs/auth/nostr-auth-proxy.service" /etc/systemd/system/nostr-auth-proxy.service
     sudo cp "$REPO_DIR/configs/blossom/blossom.service" /etc/systemd/system/blossom.service
     sudo systemctl daemon-reload
@@ -499,6 +500,8 @@ server {
         proxy_set_header X-Real-IP $client_ip;
         proxy_set_header X-Forwarded-For $client_ip;
         proxy_set_header X-Forwarded-Proto $scheme;
+        # Ensure upstream receives Authorization for NIP-98
+        proxy_set_header Authorization $http_authorization;
         client_max_body_size BLOSSOM_MAX_UPLOAD_MB_PLACEHOLDERm;
         # Ensure only one set of CORS headers (hide any from upstream)
         proxy_hide_header Access-Control-Allow-Origin;
