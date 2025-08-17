@@ -1,0 +1,22 @@
+[Unit]
+Description=Blossom Media Server
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/blossom
+ExecStartPre=/bin/bash -lc '/usr/bin/docker pull "$BLOSSOM_CONTAINER_IMAGE"'
+ExecStart=/bin/bash -lc '/usr/bin/docker run --rm \
+  --name blossom-server \
+  -p 127.0.0.1:${BLOSSOM_PORT}:3000 \
+  -v /var/lib/blossom:/app/data \
+  -v /etc/blossom/config.yml:/app/config.yml:ro \
+  "$BLOSSOM_CONTAINER_IMAGE"'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+
+

@@ -126,6 +126,7 @@ sudo apt-get install -y build-essential libsqlite3-dev libssl-dev pkg-config \
 | DEPLOY\_USER     | Deploy username                 |
 | DEPLOY\_SSH\_KEY | Private SSH key for deploy user |
 | GITHUB\_TOKEN    | Default GitHub Actions token    |
+| CLOUDFLARE\_API\_TOKEN | Cloudflare API token for DNS-01 (optional) |
 
 ### 3. Configs
 
@@ -161,7 +162,29 @@ CLOUDFLARE_ENABLED=false
 CLOUDFLARE_API_TOKEN=
 DASHBOARD_ENABLED=true
 DASHBOARD_DOMAIN=dashboard.relay.bitcoindistrict.org
+
+# Blossom media server
+BLOSSOM_ENABLED=true
+BLOSSOM_DOMAIN=media.relay.bitcoindistrict.org
+BLOSSOM_CONTAINER_IMAGE=ghcr.io/hzrd149/blossom-server:master
+BLOSSOM_PORT=3300
+BLOSSOM_MAX_UPLOAD_MB=16
+BLOSSOM_GATE_MODE=nip05   # nip05 | allowlist | open
+BLOSSOM_ALLOWLIST_FILE=/etc/blossom/allowlist.txt
+
+# Standalone Nostr Auth Proxy (shared for HTTP services)
+NOSTR_AUTH_ENABLED=true
+NOSTR_AUTH_PORT=3310
+NOSTR_AUTH_GATE_MODE=nip05
+NOSTR_AUTH_ALLOWLIST_FILE=
+NOSTR_AUTH_CACHE_TTL_SECONDS=300
+NOSTR_AUTH_LOG_LEVEL=info
 ```
+
+Guidance:
+- Put SECRETS (e.g., `CLOUDFLARE_API_TOKEN`, SSH keys) in your CI/CD secrets or host environment. Do not commit them.
+- Put non-secret SETTINGS in a `.env` file on the server or export before running `scripts/deploy.sh`. You can base this on `configs/env.example`.
+- Repo-controlled configs live in `configs/` and are safe to commit (e.g., nginx vhost templates, systemd unit files, blossom config template). Runtime copies are written to `/etc/...` by the deploy script.
 
 - `DOMAIN`: Relay FQDN. Must resolve to the server.
 - `CERTBOT_EMAIL`: Email used for Let's Encrypt registration/alerts.
@@ -220,6 +243,89 @@ bash scripts/deploy.sh
 sudo systemctl status strfry
 sudo journalctl -u strfry -f
 ```
+
+---
+
+## Blossom Media Server Integration (Plan)
+
+We will add a Blossom media server to the stack to handle blob storage (images/files) using the upstream implementation. Reference: [hzrd149/blossom-server](https://github.com/hzrd149/blossom-server).
+
+### What we'll add
+
+- Service `blossom-server` on the relay host (containerized by default for reproducibility).
+- Repo-controlled config at `configs/blossom/config.yml`.
+- Systemd unit `configs/blossom/blossom.service` to manage the service.
+- Nginx vhost for `BLOSSOM_DOMAIN` with TLS and reverse proxy to localhost.
+- Upload gating: Only NIP‑05 verified pubkeys may upload; reads remain public.
+
+### Deployment toggles (Environment Variables)
+
+```
+BLOSSOM_ENABLED=true
+BLOSSOM_DOMAIN=media.relay.bitcoindistrict.org
+BLOSSOM_CONTAINER_IMAGE=ghcr.io/hzrd149/blossom-server:master
+BLOSSOM_PORT=3300
+BLOSSOM_MAX_UPLOAD_MB=16
+BLOSSOM_GATE_MODE=nip05   # nip05 | allowlist | open
+BLOSSOM_ALLOWLIST_FILE=/etc/blossom/allowlist.txt
+```
+
+Notes:
+- Certificates are issued the same way as the relay (HTTP‑01 or Cloudflare DNS‑01).
+- `BLOSSOM_PORT` listens on `127.0.0.1`; nginx handles public TLS on `BLOSSOM_DOMAIN`.
+- A non-container option (Node under systemd using npx) will be supported via a flag; container is default.
+
+### NIP‑05 gate (uploads)
+
+We will enforce uploads from Nostr verified pubkeys via an auth proxy in front of Blossom:
+
+- Require NIP‑98 signed requests to authenticate the uploader's pubkey.
+- Require header `X-NIP05: <name@domain>`; resolve and verify `.well-known/nostr.json` maps to the authenticated pubkey.
+- Implemented as a minimal auth service; nginx uses `auth_request` on upload routes. Modes:
+  - `nip05` (default): full NIP‑98 + NIP‑05 validation.
+  - `allowlist`: only pubkeys in `BLOSSOM_ALLOWLIST_FILE` may upload.
+  - `open`: no gate (not recommended).
+
+Downloads remain public.
+
+### Files to be added
+
+- `configs/blossom/config.yml`: Base server config (data dir `/var/lib/blossom`, base URL `https://${BLOSSOM_DOMAIN}`, limits from env).
+- `configs/blossom/blossom.service`: Systemd unit (container or node mode) with persistent data volume.
+- `configs/nginx/${BLOSSOM_DOMAIN}.conf`: Nginx vhost with TLS, caching headers, gzip, proxy to `127.0.0.1:${BLOSSOM_PORT}`; `auth_request` on upload endpoints when gated.
+- `scripts/blossom-auth-proxy/`: Minimal service validating NIP‑98 and NIP‑05; returns 2xx/4xx for nginx `auth_request`.
+- `scripts/deploy.sh`: Add gated provisioning behind `BLOSSOM_ENABLED`.
+
+### Client upload example (preview)
+
+```bash
+curl -X POST \
+  -H "Authorization: Nostr <nip98-signed-event>" \
+  -H "X-NIP05: alice@example.com" \
+  -F "file=@/path/to/image.jpg" \
+  https://$BLOSSOM_DOMAIN/upload
+```
+
+Consult upstream docs for exact endpoints and config: [hzrd149/blossom-server](https://github.com/hzrd149/blossom-server).
+
+NIP‑98 reference: kind 27235 events with empty content, `u` (absolute URL) and `method` tags must be signed, and `created_at` must be within a short window (default 60s). The proxy enforces these checks and validates NIP‑05 mapping before allowing uploads. See spec: [NIP‑98](https://nostr-nips.com/nip-98).
+
+### Where to put variables and secrets
+
+- Secrets:
+  - `CLOUDFLARE_API_TOKEN`, SSH keys: store as GitHub Actions secrets or server env vars. Never commit.
+- Non-secrets (safe in `.env` on the server):
+  - `DOMAIN`, `CERTBOT_EMAIL`, `DASHBOARD_*`, `BLOSSOM_*`, `NOSTR_AUTH_*`.
+- Files managed by deploy script:
+  - `/etc/blossom/config.yml` and `/etc/default/*` are generated from `configs/` and env values.
+
+### Rollout plan
+
+1. Commit new config, systemd unit, nginx vhost, and auth proxy; guard with `BLOSSOM_ENABLED`.
+2. Extend `deploy.sh` to provision Docker (if needed), install files, obtain certs, start services, and smoke‑test.
+3. Stage with `BLOSSOM_GATE_MODE=allowlist` and verify uploads/reads end‑to‑end.
+4. Switch to `BLOSSOM_GATE_MODE=nip05` and validate NIP‑98/NIP‑05 flow.
+5. Enable in production.
 
 ---
 

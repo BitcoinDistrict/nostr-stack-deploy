@@ -1,0 +1,16 @@
+{
+  "name": "nostr-auth-proxy",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "main": "index.mjs",
+  "dependencies": {
+    "@noble/ciphers": "1.0.0",
+    "@noble/curves": "1.4.0",
+    "@noble/hashes": "1.4.0",
+    "itty-router": "4.0.23",
+    "node-fetch": "3.3.2"
+  }
+}
+
+

@@ -1,0 +1,16 @@
+# Base Blossom server config (used by container via bind mount)
+
+server:
+  # Blossom server listens on localhost; nginx terminates TLS
+  host: 127.0.0.1
+  port: ${BLOSSOM_PORT:-3300}
+  base_url: ${BLOSSOM_BASE_URL:-https://${BLOSSOM_DOMAIN}}
+
+storage:
+  data_dir: /var/lib/blossom
+  # Optional retention or pruning policies can be added later
+
+limits:
+  max_upload_mb: ${BLOSSOM_MAX_UPLOAD_MB:-16}
+
+

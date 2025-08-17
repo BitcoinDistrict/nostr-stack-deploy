@@ -1,0 +1,26 @@
+[Unit]
+Description=Blossom Auth Proxy (NIP-98 + NIP-05)
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/blossom-auth
+ExecStartPre=/usr/bin/docker build -t blossom-auth-proxy:local /home/deploy/nostr-stack-deploy/scripts/blossom-auth-proxy
+ExecStart=/usr/bin/docker run --rm \
+  --name blossom-auth-proxy \
+  -p 127.0.0.1:${BLOSSOM_AUTH_PORT:-3310}:3000 \
+  -e PORT=3000 \
+  -e GATE_MODE=${BLOSSOM_GATE_MODE:-nip05} \
+  -e CACHE_TTL=${BLOSSOM_AUTH_CACHE_TTL_SECONDS:-300} \
+  -e LOG_LEVEL=${BLOSSOM_AUTH_LOG_LEVEL:-info} \
+  -e ALLOWLIST_FILE=${BLOSSOM_ALLOWLIST_FILE:-} \
+  -v ${BLOSSOM_ALLOWLIST_FILE:-/dev/null}:${BLOSSOM_ALLOWLIST_FILE:-/dev/null}:ro \
+  blossom-auth-proxy:local
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+
+

@@ -26,6 +26,21 @@ CLOUDFLARE_API_TOKEN="${CLOUDFLARE_API_TOKEN:-}"
 DASHBOARD_ENABLED="${DASHBOARD_ENABLED:-false}"
 DASHBOARD_DOMAIN="${DASHBOARD_DOMAIN:-dashboard.relay.bitcoindistrict.org}"
 
+# Optional Blossom media server deployment
+BLOSSOM_ENABLED="${BLOSSOM_ENABLED:-false}"
+BLOSSOM_DOMAIN="${BLOSSOM_DOMAIN:-media.${DOMAIN}}"
+BLOSSOM_CONTAINER_IMAGE="${BLOSSOM_CONTAINER_IMAGE:-ghcr.io/hzrd149/blossom-server:master}"
+BLOSSOM_PORT="${BLOSSOM_PORT:-3300}"
+BLOSSOM_MAX_UPLOAD_MB="${BLOSSOM_MAX_UPLOAD_MB:-16}"
+BLOSSOM_GATE_MODE="${BLOSSOM_GATE_MODE:-nip05}"
+BLOSSOM_ALLOWLIST_FILE="${BLOSSOM_ALLOWLIST_FILE:-}"
+NOSTR_AUTH_ENABLED="${NOSTR_AUTH_ENABLED:-true}"
+NOSTR_AUTH_PORT="${NOSTR_AUTH_PORT:-3310}"
+NOSTR_AUTH_GATE_MODE="${NOSTR_AUTH_GATE_MODE:-nip05}"
+NOSTR_AUTH_ALLOWLIST_FILE="${NOSTR_AUTH_ALLOWLIST_FILE:-}"
+NOSTR_AUTH_CACHE_TTL_SECONDS="${NOSTR_AUTH_CACHE_TTL_SECONDS:-300}"
+NOSTR_AUTH_LOG_LEVEL="${NOSTR_AUTH_LOG_LEVEL:-info}"
+
 # -----------------------------
 # Install build dependencies
 # -----------------------------
@@ -252,6 +267,199 @@ EOF
     echo "✅ Dashboard installed"
 else
     echo "ℹ️  Dashboard disabled (set DASHBOARD_ENABLED=true to enable)"
+fi
+
+# -----------------------------
+# Optional: Deploy Blossom media server
+# -----------------------------
+if [ "$BLOSSOM_ENABLED" = "true" ]; then
+    echo "🌸 Installing Blossom (domain: ${BLOSSOM_DOMAIN})..."
+
+    # Ensure docker is installed for containerized services
+    if ! command -v docker >/dev/null 2>&1; then
+        echo "🐳 Installing Docker..."
+        curl -fsSL https://get.docker.com | sudo sh
+        sudo usermod -aG docker "$USER" || true
+    fi
+
+    # Prepare runtime directories and config
+    sudo mkdir -p /var/lib/blossom /etc/blossom
+    sudo chown -R deploy:deploy /var/lib/blossom || true
+    # Write blossom config with resolved values
+    sudo bash -c "cat > /etc/blossom/config.yml <<EOF
+server:
+  host: 127.0.0.1
+  port: 3000
+  base_url: https://${BLOSSOM_DOMAIN}
+
+storage:
+  data_dir: /var/lib/blossom
+
+limits:
+  max_upload_mb: ${BLOSSOM_MAX_UPLOAD_MB}
+EOF"
+
+    # Write default files for systemd env overrides
+    sudo mkdir -p /etc/default
+    sudo bash -c "cat > /etc/default/blossom <<EOF
+BLOSSOM_CONTAINER_IMAGE=${BLOSSOM_CONTAINER_IMAGE}
+BLOSSOM_PORT=${BLOSSOM_PORT}
+EOF"
+    sudo bash -c "cat > /etc/default/nostr-auth-proxy <<EOF
+NOSTR_AUTH_PORT=${NOSTR_AUTH_PORT}
+NOSTR_AUTH_GATE_MODE=${NOSTR_AUTH_GATE_MODE}
+NOSTR_AUTH_CACHE_TTL_SECONDS=${NOSTR_AUTH_CACHE_TTL_SECONDS}
+NOSTR_AUTH_LOG_LEVEL=${NOSTR_AUTH_LOG_LEVEL}
+NOSTR_AUTH_ALLOWLIST_FILE=${NOSTR_AUTH_ALLOWLIST_FILE}
+EOF"
+
+    # Install systemd units (standalone auth proxy + blossom)
+    sudo cp "$REPO_DIR/configs/auth/nostr-auth-proxy.service" /etc/systemd/system/nostr-auth-proxy.service
+    sudo cp "$REPO_DIR/configs/blossom/blossom.service" /etc/systemd/system/blossom.service
+    sudo systemctl daemon-reload
+
+    # Build/start auth proxy first (needed for auth_request)
+    if [ "$NOSTR_AUTH_ENABLED" = "true" ]; then
+        sudo systemctl enable nostr-auth-proxy.service
+        sudo systemctl restart nostr-auth-proxy.service
+    fi
+
+    # Start blossom server container via systemd
+    sudo systemctl enable blossom.service
+    sudo systemctl restart blossom.service
+
+    # Create HTTP-only vhost for ACME
+    BLOSSOM_SITE_PATH="/etc/nginx/sites-available/${BLOSSOM_DOMAIN}"
+    cat << 'EOF' | sudo tee "${BLOSSOM_SITE_PATH}" >/dev/null
+map $http_cf_connecting_ip $client_ip {
+    default $http_cf_connecting_ip;
+    ''      $remote_addr;
+}
+
+upstream blossom_upstream { server 127.0.0.1:BLOSSOM_PORT_PLACEHOLDER; }
+upstream blossom_auth { server 127.0.0.1:NOSTR_AUTH_PORT_PLACEHOLDER; }
+
+server {
+    listen 80;
+    server_name BLOSSOM_DOMAIN_PLACEHOLDER;
+    
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    # Temporarily allow direct proxy for cert issuance
+    location / {
+        proxy_pass http://blossom_upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $client_ip;
+        proxy_set_header X-Forwarded-For $client_ip;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+EOF
+    sudo sed -i "s/BLOSSOM_DOMAIN_PLACEHOLDER/${BLOSSOM_DOMAIN}/g" "${BLOSSOM_SITE_PATH}"
+    sudo sed -i "s/BLOSSOM_PORT_PLACEHOLDER/${BLOSSOM_PORT}/g" "${BLOSSOM_SITE_PATH}"
+    sudo sed -i "s/NOSTR_AUTH_PORT_PLACEHOLDER/${NOSTR_AUTH_PORT}/g" "${BLOSSOM_SITE_PATH}"
+    sudo ln -sf "${BLOSSOM_SITE_PATH}" "/etc/nginx/sites-enabled/${BLOSSOM_DOMAIN}"
+    sudo nginx -t && sudo systemctl reload nginx
+
+    echo "🔒 Obtaining Let's Encrypt certificate for ${BLOSSOM_DOMAIN}..."
+    BLOSSOM_CERT_STATUS="failed"
+    if [ "$CLOUDFLARE_ENABLED" = "true" ] && [ -n "$CLOUDFLARE_API_TOKEN" ]; then
+        CLOUDFLARE_INI="/etc/letsencrypt/cloudflare.ini"
+        sudo mkdir -p "/etc/letsencrypt"
+        echo "dns_cloudflare_api_token = ${CLOUDFLARE_API_TOKEN}" | sudo tee "$CLOUDFLARE_INI" >/dev/null
+        sudo chmod 600 "$CLOUDFLARE_INI"
+        if sudo certbot certonly \
+                --dns-cloudflare \
+                --dns-cloudflare-credentials "$CLOUDFLARE_INI" \
+                --dns-cloudflare-propagation-seconds 60 \
+                -d "$BLOSSOM_DOMAIN" \
+                --non-interactive --agree-tos -m "$CERTBOT_EMAIL"; then
+            BLOSSOM_CERT_STATUS="ok"
+        fi
+    else
+        if sudo certbot certonly --nginx -d "$BLOSSOM_DOMAIN" --non-interactive --agree-tos -m "$CERTBOT_EMAIL"; then
+            BLOSSOM_CERT_STATUS="ok"
+        fi
+    fi
+
+    if [ "$BLOSSOM_CERT_STATUS" = "ok" ] || [ -f "/etc/letsencrypt/live/${BLOSSOM_DOMAIN}/fullchain.pem" ]; then
+        cat << 'EOF' | sudo tee "${BLOSSOM_SITE_PATH}" >/dev/null
+map $http_cf_connecting_ip $client_ip {
+    default $http_cf_connecting_ip;
+    ''      $remote_addr;
+}
+
+upstream blossom_upstream { server 127.0.0.1:BLOSSOM_PORT_PLACEHOLDER; }
+upstream blossom_auth { server 127.0.0.1:NOSTR_AUTH_PORT_PLACEHOLDER; }
+
+server {
+    listen 80;
+    server_name BLOSSOM_DOMAIN_PLACEHOLDER;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name BLOSSOM_DOMAIN_PLACEHOLDER;
+
+    ssl_certificate /etc/letsencrypt/live/BLOSSOM_DOMAIN_PLACEHOLDER/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/BLOSSOM_DOMAIN_PLACEHOLDER/privkey.pem;
+
+    # Public read endpoints
+    location / {
+        proxy_pass http://blossom_upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $client_ip;
+        proxy_set_header X-Forwarded-For $client_ip;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        client_max_body_size BLOSSOM_MAX_UPLOAD_MB_PLACEHOLDERm;
+    }
+
+    # Upload endpoints (protect with auth_request when gate enabled)
+    location /upload {
+        # Gate modes: nip05/allowlist -> require auth; open -> no auth
+        auth_request /__auth;
+        proxy_pass http://blossom_upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $client_ip;
+        proxy_set_header X-Forwarded-For $client_ip;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        client_max_body_size BLOSSOM_MAX_UPLOAD_MB_PLACEHOLDERm;
+    }
+
+    location = /__auth {
+        internal;
+        proxy_pass http://blossom_auth/auth;
+        proxy_set_header X-NIP05 $http_x_nip05;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-Original-Host $host;
+        proxy_set_header X-Original-URI $request_uri;
+        proxy_set_header X-Original-Method $request_method;
+        proxy_set_header X-Original-Scheme $scheme;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+    }
+}
+EOF
+        sudo sed -i "s/BLOSSOM_DOMAIN_PLACEHOLDER/${BLOSSOM_DOMAIN}/g" "${BLOSSOM_SITE_PATH}"
+        sudo sed -i "s/BLOSSOM_PORT_PLACEHOLDER/${BLOSSOM_PORT}/g" "${BLOSSOM_SITE_PATH}"
+        sudo sed -i "s/NOSTR_AUTH_PORT_PLACEHOLDER/${NOSTR_AUTH_PORT}/g" "${BLOSSOM_SITE_PATH}"
+        sudo sed -i "s/BLOSSOM_MAX_UPLOAD_MB_PLACEHOLDER/${BLOSSOM_MAX_UPLOAD_MB}/g" "${BLOSSOM_SITE_PATH}"
+
+        # If gate is open, remove auth_request from the nginx conf
+        if [ "$BLOSSOM_GATE_MODE" = "open" ]; then
+            sudo sed -i "/auth_request \\/__auth;/d" "${BLOSSOM_SITE_PATH}"
+        fi
+
+        sudo nginx -t && sudo systemctl reload nginx
+        echo "✅ Blossom HTTPS config enabled for ${BLOSSOM_DOMAIN}"
+    else
+        echo "⚠️  Could not obtain HTTPS for Blossom; serving HTTP-only for now."
+    fi
+else
+    echo "ℹ️  Blossom disabled (set BLOSSOM_ENABLED=true to enable)"
 fi
 if [ "$CERT_STATUS" = "ok" ] || [ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]; then
     # Write final HTTPS-enabled config

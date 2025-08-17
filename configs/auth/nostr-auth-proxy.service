@@ -1,0 +1,25 @@
+[Unit]
+Description=Nostr Auth Proxy (NIP-98 + NIP-05)
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/nostr-auth-proxy
+ExecStartPre=/usr/bin/docker build -t nostr-auth-proxy:local /home/deploy/nostr-stack-deploy/scripts/nostr-auth-proxy
+ExecStart=/usr/bin/docker run --rm \
+  --name nostr-auth-proxy \
+  -p 127.0.0.1:${NOSTR_AUTH_PORT:-3310}:3000 \
+  -e PORT=3000 \
+  -e GATE_MODE=${NOSTR_AUTH_GATE_MODE:-nip05} \
+  -e CACHE_TTL=${NOSTR_AUTH_CACHE_TTL_SECONDS:-300} \
+  -e LOG_LEVEL=${NOSTR_AUTH_LOG_LEVEL:-info} \
+  -e ALLOWLIST_FILE=${NOSTR_AUTH_ALLOWLIST_FILE:-} \
+  nostr-auth-proxy:local
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+
+
