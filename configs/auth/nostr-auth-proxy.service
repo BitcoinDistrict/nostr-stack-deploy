@@ -1,3 +1,10 @@
+# Template for nostr-auth-proxy service
+# This file is used as a reference template. The actual service file is generated
+# by scripts/deploy.sh with conditional volume mounting based on NOSTR_AUTH_GATE_MODE.
+#
+# For allowlist mode: includes volume mount for allowlist file
+# For nip05/open modes: no volume mount (cleaner, no invalid mount specs)
+
 [Unit]
 Description=Nostr Auth Proxy (NIP-98 + NIP-05)
 After=network-online.target docker.service

@@ -306,6 +306,16 @@ curl -X POST \
   https://$BLOSSOM_DOMAIN/upload
 ```
 
+### Gate Modes
+
+The auth proxy supports three gate modes:
+
+- **`nip05`** (default): Requires NIP-98 signed requests and validates NIP-05 mapping
+- **`allowlist`**: Only allows pubkeys listed in `NOSTR_AUTH_ALLOWLIST_FILE` 
+- **`open`**: No authentication required (not recommended for production)
+
+The deploy script automatically configures volume mounts only when using `allowlist` mode, avoiding invalid Docker mount specifications.
+
 Consult upstream docs for exact endpoints and config: [hzrd149/blossom-server](https://github.com/hzrd149/blossom-server).
 
 NIP‑98 reference: kind 27235 events with empty content, `u` (absolute URL) and `method` tags must be signed, and `created_at` must be within a short window (default 60s). The proxy enforces these checks and validates NIP‑05 mapping before allowing uploads. See spec: [NIP‑98](https://nostr-nips.com/nip-98).

@@ -344,7 +344,41 @@ NOSTR_AUTH_ALLOWLIST_FILE=${NOSTR_AUTH_ALLOWLIST_FILE}
 EOF"
 
     # Install systemd units (auth proxy + blossom)
-    sudo cp "$REPO_DIR/configs/auth/nostr-auth-proxy.service" /etc/systemd/system/nostr-auth-proxy.service
+    # Generate conditional nostr-auth-proxy service based on gate mode
+    cat << 'EOF' | sudo tee /etc/systemd/system/nostr-auth-proxy.service >/dev/null
+[Unit]
+Description=Nostr Auth Proxy (NIP-98 + NIP-05)
+After=network-online.target docker.service
+Wants=network-online.target docker.service
+
+[Service]
+Type=simple
+EnvironmentFile=-/etc/default/nostr-auth-proxy
+ExecStartPre=/usr/bin/docker build -t nostr-auth-proxy:local /home/deploy/nostr-stack-deploy/scripts/nostr-auth-proxy
+ExecStart=/usr/bin/docker run --rm \
+  --name nostr-auth-proxy \
+  -p 127.0.0.1:${NOSTR_AUTH_PORT:-3310}:3000 \
+  -e PORT=3000 \
+  -e GATE_MODE=${NOSTR_AUTH_GATE_MODE:-nip05} \
+  -e CACHE_TTL=${NOSTR_AUTH_CACHE_TTL_SECONDS:-300} \
+  -e LOG_LEVEL=${NOSTR_AUTH_LOG_LEVEL:-info} \
+  -e ALLOWLIST_FILE=${NOSTR_AUTH_ALLOWLIST_FILE:-} \
+  VOLUME_MOUNT_PLACEHOLDER \
+  nostr-auth-proxy:local
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    # Add volume mount only if using allowlist mode
+    if [ "$NOSTR_AUTH_GATE_MODE" = "allowlist" ] && [ -n "${NOSTR_AUTH_ALLOWLIST_FILE:-}" ]; then
+        sudo sed -i 's|VOLUME_MOUNT_PLACEHOLDER|  -v '"${NOSTR_AUTH_ALLOWLIST_FILE}:${NOSTR_AUTH_ALLOWLIST_FILE}:ro"'|' /etc/systemd/system/nostr-auth-proxy.service
+    else
+        sudo sed -i 's|VOLUME_MOUNT_PLACEHOLDER||' /etc/systemd/system/nostr-auth-proxy.service
+    fi
+
     sudo cp "$REPO_DIR/configs/blossom/blossom.service" /etc/systemd/system/blossom.service
     sudo systemctl daemon-reload
 
