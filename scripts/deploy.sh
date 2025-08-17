@@ -458,6 +458,10 @@ server {
         client_max_body_size BLOSSOM_MAX_UPLOAD_MB_PLACEHOLDERm;
         # Ensure only one set of CORS headers (hide any from upstream)
         proxy_hide_header Access-Control-Allow-Origin;
+        proxy_hide_header Access-Control-Allow-Credentials;
+        proxy_hide_header Access-Control-Allow-Headers;
+        proxy_hide_header Access-Control-Allow-Methods;
+        proxy_hide_header Access-Control-Expose-Headers;
         # CORS headers for public endpoints
         add_header Access-Control-Allow-Origin "*" always;
         add_header Access-Control-Expose-Headers "*" always;
@@ -488,6 +492,10 @@ server {
         client_max_body_size BLOSSOM_MAX_UPLOAD_MB_PLACEHOLDERm;
         # Ensure only one set of CORS headers (hide any from upstream)
         proxy_hide_header Access-Control-Allow-Origin;
+        proxy_hide_header Access-Control-Allow-Credentials;
+        proxy_hide_header Access-Control-Allow-Headers;
+        proxy_hide_header Access-Control-Allow-Methods;
+        proxy_hide_header Access-Control-Expose-Headers;
         # CORS headers on actual requests
         add_header Access-Control-Allow-Origin "*" always;
         add_header Access-Control-Expose-Headers "*" always;
