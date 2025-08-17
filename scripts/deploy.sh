@@ -355,7 +355,7 @@ Wants=network-online.target docker.service
 Type=simple
 EnvironmentFile=-/etc/default/nostr-auth-proxy
 ExecStartPre=/usr/bin/docker build -t nostr-auth-proxy:local /home/deploy/nostr-stack-deploy/scripts/nostr-auth-proxy
-ExecStart=/usr/bin/docker run --rm \
+ExecStart=/bin/bash -lc '/usr/bin/docker run --rm \
   --name nostr-auth-proxy \
   -p 127.0.0.1:${NOSTR_AUTH_PORT:-3310}:3000 \
   -e PORT=3000 \
@@ -364,7 +364,7 @@ ExecStart=/usr/bin/docker run --rm \
   -e LOG_LEVEL=${NOSTR_AUTH_LOG_LEVEL:-info} \
   -e ALLOWLIST_FILE=${NOSTR_AUTH_ALLOWLIST_FILE:-} \
   VOLUME_MOUNT_PLACEHOLDER \
-  nostr-auth-proxy:local
+  nostr-auth-proxy:local'
 Restart=always
 RestartSec=5
 
