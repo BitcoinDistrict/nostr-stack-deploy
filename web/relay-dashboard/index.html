@@ -135,11 +135,40 @@
           return `<div class="row" style="margin:.25rem 0 .5rem;">${chips.join(' ')}</div>`;
         }
 
+        function bytes(n) {
+          if (typeof n !== 'number') return '';
+          const units = ['B','KiB','MiB','GiB','TiB'];
+          let u = 0; let v = n;
+          while (v >= 1024 && u < units.length - 1) { v /= 1024; u++; }
+          return v.toFixed(1) + ' ' + units[u];
+        }
+
+        function dbSummary(db) {
+          if (!db) return '';
+          const parts = [];
+          if (typeof db.totalEvents === 'number') parts.push(`<span class="badge">Total events: ${db.totalEvents}</span>`);
+          if (typeof db.lmdbBytes === 'number') parts.push(`<span class="badge">LMDB: ${bytes(db.lmdbBytes)}</span>`);
+          if (parts.length === 0) return '';
+          return `<div class="row" style="margin:.25rem 0 .5rem;">${parts.join(' ')}</div>`;
+        }
+
+        function topAuthorsSection(map) {
+          if (!map || Object.keys(map).length === 0) return '';
+          const rows = Object.entries(map)
+            .sort((a,b) => b[1]-a[1])
+            .map(([pk,c]) => `<tr><td><code class="small">${pk}</code></td><td>${c}</td></tr>`)
+            .join('');
+          return `<div style="margin:.25rem 0 .5rem;">Top authors (24h)</div><table><thead><tr><th>Pubkey</th><th>Count</th></tr></thead><tbody>${rows}</tbody></table>`;
+        }
+
         const lastHour = tableFromMap('Events by kind (last hour)', data.lastHour?.eventsByKind);
+        const last5m = tableFromMap('Events by kind (last 5m)', data.last5m?.eventsByKind);
         const last24h = tableFromMap('Events by kind (last 24h)', data.last24h?.eventsByKind);
         const uniques = typeof data.last24h?.uniquePubkeys === 'number' ? `<div class="row"><div class="badge">Unique pubkeys (24h): ${data.last24h.uniquePubkeys}</div></div>` : '';
         const activity = activitySummary(data.activity);
-        statsEl.innerHTML = `${activity}${uniques}${lastHour}${last24h}`;
+        const db = dbSummary(data.db);
+        const topAuthors = topAuthorsSection(data.last24h?.topAuthors);
+        statsEl.innerHTML = `${activity}${db}${uniques}${last5m}${lastHour}${last24h}${topAuthors}`;
       }
 
       async function refresh() {
