@@ -53,6 +53,30 @@ count_unique_pubkeys() {
   fi
 }
 
+# Helper to count recent insert activity from systemd journal (best-effort)
+count_inserts_since() {
+  local since_human="$1"  # e.g., "5 minutes ago" or "1 hour ago"
+  if ! command -v journalctl >/dev/null 2>&1; then
+    echo 0
+    return
+  fi
+  # Use UTC to avoid TZ issues, and robust date formatting for journalctl -S
+  local since_iso
+  if date -u -d "$since_human" +"%Y-%m-%d %H:%M:%S" >/dev/null 2>&1; then
+    since_iso="$(date -u -d "$since_human" +"%Y-%m-%d %H:%M:%S")"
+  else
+    # Fallback to 5 minutes ago if parsing fails
+    since_iso="$(date -u -d '5 minutes ago' +"%Y-%m-%d %H:%M:%S")"
+  fi
+  # Count lines containing the exact writer message substring
+  # strfry service name is 'strfry' per configs/strfry.service
+  # Grep pattern is stable across versions: "Inserted event."
+  journalctl -u strfry -S "$since_iso" --no-pager 2>/dev/null \
+    | grep -F "Inserted event." \
+    | wc -l \
+    | tr -d ' \n' || echo 0
+}
+
 # Optionally fetch NIP-11 and write to disk (avoids browser CORS issues)
 if [ -n "$NIP11_URL" ] && command -v curl >/dev/null 2>&1; then
   NIP11_TMP="${NIP11_FILE}.tmp"
@@ -122,6 +146,16 @@ serialize_kinds() {
 {
   printf '{'
   printf '"generatedAt":"%s",' "$generated_at"
+  # Recent activity derived from journal (best-effort)
+  inserts_5m="$(count_inserts_since '5 minutes ago')"
+  inserts_1h="$(count_inserts_since '1 hour ago')"
+  # Normalize to integers
+  if ! [[ "$inserts_5m" =~ ^[0-9]+$ ]]; then inserts_5m=0; fi
+  if ! [[ "$inserts_1h" =~ ^[0-9]+$ ]]; then inserts_1h=0; fi
+  printf '"activity":{'
+  printf '"insertedLast5m":%s,' "$inserts_5m"
+  printf '"insertedLast1h":%s' "$inserts_1h"
+  printf '},'
   printf '"lastHour":{'
   printf '"eventsByKind":'
   serialize_kinds kinds_1h

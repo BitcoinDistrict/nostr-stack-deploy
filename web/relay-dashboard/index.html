@@ -124,10 +124,22 @@
           return `<div style="margin:.25rem 0 .5rem;">${title}</div><table><thead><tr><th>Metric</th><th>Count</th></tr></thead><tbody>${rows}</tbody></table>`;
         }
 
+        function activitySummary(activity) {
+          if (!activity) return '';
+          const a5 = typeof activity.insertedLast5m === 'number' ? activity.insertedLast5m : null;
+          const a1 = typeof activity.insertedLast1h === 'number' ? activity.insertedLast1h : null;
+          if (a5 === null && a1 === null) return '';
+          const chips = [];
+          if (a5 !== null) chips.push(`<span class="badge">Inserts (5m): ${a5}</span>`);
+          if (a1 !== null) chips.push(`<span class="badge">Inserts (1h): ${a1}</span>`);
+          return `<div class="row" style="margin:.25rem 0 .5rem;">${chips.join(' ')}</div>`;
+        }
+
         const lastHour = tableFromMap('Events by kind (last hour)', data.lastHour?.eventsByKind);
         const last24h = tableFromMap('Events by kind (last 24h)', data.last24h?.eventsByKind);
         const uniques = typeof data.last24h?.uniquePubkeys === 'number' ? `<div class="row"><div class="badge">Unique pubkeys (24h): ${data.last24h.uniquePubkeys}</div></div>` : '';
-        statsEl.innerHTML = `${uniques}${lastHour}${last24h}`;
+        const activity = activitySummary(data.activity);
+        statsEl.innerHTML = `${activity}${uniques}${lastHour}${last24h}`;
       }
 
       async function refresh() {
