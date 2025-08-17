@@ -98,7 +98,6 @@ jobs:
             DASHBOARD_DOMAIN=${{ secrets.DASHBOARD_DOMAIN }} \\
             CLOUDFLARE_ENABLED=${{ vars.CLOUDFLARE_ENABLED }} \\
             CLOUDFLARE_API_TOKEN=${{ secrets.CLOUDFLARE_API_TOKEN }} \\
-            # Blossom media server
             BLOSSOM_ENABLED=${{ vars.BLOSSOM_ENABLED }} \\
             BLOSSOM_DOMAIN=${{ vars.BLOSSOM_DOMAIN }} \\
             BLOSSOM_CONTAINER_IMAGE=${{ vars.BLOSSOM_CONTAINER_IMAGE }} \\
@@ -106,7 +105,6 @@ jobs:
             BLOSSOM_MAX_UPLOAD_MB=${{ vars.BLOSSOM_MAX_UPLOAD_MB }} \\
             BLOSSOM_GATE_MODE=${{ vars.BLOSSOM_GATE_MODE }} \\
             BLOSSOM_ALLOWLIST_FILE=${{ vars.BLOSSOM_ALLOWLIST_FILE }} \\
-            # Standalone Nostr auth proxy
             NOSTR_AUTH_ENABLED=${{ vars.NOSTR_AUTH_ENABLED }} \\
             NOSTR_AUTH_PORT=${{ vars.NOSTR_AUTH_PORT }} \\
             NOSTR_AUTH_GATE_MODE=${{ vars.NOSTR_AUTH_GATE_MODE }} \\

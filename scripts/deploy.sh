@@ -307,6 +307,7 @@ if to_bool "$BLOSSOM_ENABLED"; then
     if ! command -v docker >/dev/null 2>&1; then
         echo "🐳 Installing Docker..."
         curl -fsSL https://get.docker.com | sudo sh
+        sudo systemctl enable --now docker || true
         sudo usermod -aG docker "$USER" || true
     fi
 
