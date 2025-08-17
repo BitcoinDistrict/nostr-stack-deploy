@@ -1,6 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Normalize boolean-like envs (true/1/yes/on)
+to_bool() {
+    case "${1:-}" in
+        [Tt][Rr][Uu][Ee]|1|[Yy][Ee][Ss]|[Yy]|[Oo][Nn]) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 # -----------------------------
 # Paths
 # -----------------------------
@@ -52,7 +60,27 @@ sudo apt-get install -y build-essential libsqlite3-dev libssl-dev pkg-config \
 # Install and configure nginx
 # -----------------------------
 echo "🌐 Installing and configuring nginx..."
+echo "Config summary:"
+echo "  DOMAIN=${DOMAIN}"
+echo "  DASHBOARD_ENABLED=${DASHBOARD_ENABLED}"
+echo "  DASHBOARD_DOMAIN=${DASHBOARD_DOMAIN}"
+echo "  BLOSSOM_ENABLED=${BLOSSOM_ENABLED}"
+echo "  BLOSSOM_DOMAIN=${BLOSSOM_DOMAIN}"
+echo "  BLOSSOM_PORT=${BLOSSOM_PORT}"
+echo "  BLOSSOM_MAX_UPLOAD_MB=${BLOSSOM_MAX_UPLOAD_MB}"
+echo "  NOSTR_AUTH_ENABLED=${NOSTR_AUTH_ENABLED}"
+echo "  NOSTR_AUTH_PORT=${NOSTR_AUTH_PORT}"
 sudo apt-get install -y nginx certbot python3-certbot-nginx python3-certbot-dns-cloudflare jq
+
+# Ensure firewall allows HTTP/HTTPS early for ACME challenges
+if command -v ufw >/dev/null 2>&1; then
+    sudo ufw --force enable || true
+    sudo ufw allow 'Nginx Full' || true
+else
+    sudo apt-get install -y ufw
+    sudo ufw --force enable || true
+    sudo ufw allow 'Nginx Full' || true
+fi
 
 # Prepare an initial HTTP-only config to serve the domain prior to certificate issuance
 NGINX_SITE_PATH="/etc/nginx/sites-available/${DOMAIN}"
@@ -143,7 +171,7 @@ fi
 # -----------------------------
 # Optional: Deploy static dashboard
 # -----------------------------
-if [ "$DASHBOARD_ENABLED" = "true" ]; then
+if to_bool "$DASHBOARD_ENABLED"; then
     echo "📊 Installing dashboard (domain: ${DASHBOARD_DOMAIN})..."
 
     DASHBOARD_SITE_PATH="/etc/nginx/sites-available/${DASHBOARD_DOMAIN}"
@@ -272,7 +300,7 @@ fi
 # -----------------------------
 # Optional: Deploy Blossom media server
 # -----------------------------
-if [ "$BLOSSOM_ENABLED" = "true" ]; then
+if to_bool "$BLOSSOM_ENABLED"; then
     echo "🌸 Installing Blossom (domain: ${BLOSSOM_DOMAIN})..."
 
     # Ensure docker is installed for containerized services
@@ -319,7 +347,7 @@ EOF"
     sudo systemctl daemon-reload
 
     # Build/start auth proxy first (needed for auth_request)
-    if [ "$NOSTR_AUTH_ENABLED" = "true" ]; then
+    if to_bool "$NOSTR_AUTH_ENABLED"; then
         sudo systemctl enable nostr-auth-proxy.service
         sudo systemctl restart nostr-auth-proxy.service
     fi
@@ -362,6 +390,8 @@ EOF
     sudo sed -i "s/NOSTR_AUTH_PORT_PLACEHOLDER/${NOSTR_AUTH_PORT}/g" "${BLOSSOM_SITE_PATH}"
     sudo ln -sf "${BLOSSOM_SITE_PATH}" "/etc/nginx/sites-enabled/${BLOSSOM_DOMAIN}"
     sudo nginx -t && sudo systemctl reload nginx
+    echo "📄 Wrote HTTP vhost for Blossom: ${BLOSSOM_SITE_PATH}"
+    ls -l "/etc/nginx/sites-available/" | sed 's/^/  /'
 
     echo "🔒 Obtaining Let's Encrypt certificate for ${BLOSSOM_DOMAIN}..."
     BLOSSOM_CERT_STATUS="failed"
@@ -455,8 +485,16 @@ EOF
 
         sudo nginx -t && sudo systemctl reload nginx
         echo "✅ Blossom HTTPS config enabled for ${BLOSSOM_DOMAIN}"
+        echo "🔎 Nginx active sites:"
+        ls -l /etc/nginx/sites-enabled | sed 's/^/  /'
     else
         echo "⚠️  Could not obtain HTTPS for Blossom; serving HTTP-only for now."
+    fi
+
+    echo "🔎 Systemd service statuses (post-start):"
+    sudo systemctl --no-pager status blossom || true
+    if [ "$NOSTR_AUTH_ENABLED" = "true" ]; then
+        sudo systemctl --no-pager status nostr-auth-proxy || true
     fi
 else
     echo "ℹ️  Blossom disabled (set BLOSSOM_ENABLED=true to enable)"
