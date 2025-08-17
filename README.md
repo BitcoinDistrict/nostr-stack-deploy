@@ -293,7 +293,7 @@ Downloads remain public.
 - `configs/blossom/config.yml`: Base server config (data dir `/var/lib/blossom`, base URL `https://${BLOSSOM_DOMAIN}`, limits from env).
 - `configs/blossom/blossom.service`: Systemd unit (container or node mode) with persistent data volume.
 - `configs/nginx/${BLOSSOM_DOMAIN}.conf`: Nginx vhost with TLS, caching headers, gzip, proxy to `127.0.0.1:${BLOSSOM_PORT}`; `auth_request` on upload endpoints when gated.
-- `scripts/blossom-auth-proxy/`: Minimal service validating NIP‑98 and NIP‑05; returns 2xx/4xx for nginx `auth_request`.
+- `scripts/nostr-auth-proxy/`: Minimal service validating NIP‑98 and NIP‑05; returns 2xx/4xx for nginx `auth_request`.
 - `scripts/deploy.sh`: Add gated provisioning behind `BLOSSOM_ENABLED`.
 
 ### Client upload example (preview)
