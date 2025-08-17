@@ -54,6 +54,8 @@ This repository manages automated deployment of the **Strfry Nostr Relay** for B
       └───────────────────────────┘
 ```
 
+Blossom media server is integrated similarly via a submodule and auto-bump workflow, with deployment controlled by env toggles.
+
 ---
 
 ## Repository Structure
@@ -62,7 +64,8 @@ This repository manages automated deployment of the **Strfry Nostr Relay** for B
 nostr-stack-deploy/
 ├─ .github/workflows/
 │  ├─ deploy.yml               # CI/CD deploy workflow
-│  └─ auto-bump-strfry.yml     # PR workflow for upstream updates
+│  ├─ auto-bump-strfry.yml     # PR workflow for strfry upstream updates
+│  └─ auto-bump-blossom.yml    # PR workflow for blossom upstream updates
 ├─ scripts/
 │  └─ deploy.sh                # Server-side deploy script
 │  └─ dashboard/               # Stats generation scripts
@@ -70,6 +73,10 @@ nostr-stack-deploy/
 ├─ configs/
 │  ├─ strfry.conf              # Repo-controlled Strfry config
 │  ├─ strfry.service           # Systemd service unit
+│  ├─ blossom/
+│  │  ├─ config.yml            # Base Blossom config (rendered to /etc/blossom/config.yml)
+│  │  ├─ blossom.service       # Systemd (container mode)
+│  │  └─ blossom-from-source.service # Systemd (source mode)
 │  └─ nginx/                   # Nginx configuration files
 │     └─ relay.bitcoindistrict.org.conf
 │  └─ dashboard/               # Dashboard units and env
@@ -80,7 +87,8 @@ nostr-stack-deploy/
 ├─ web/
 │  └─ relay-dashboard/         # Static dashboard frontend
 │     └─ index.html
-└─ strfry/                     # Submodule pointing to Strfry upstream
+├─ strfry/                     # Submodule: Strfry upstream
+└─ blossom-server/             # Submodule: Blossom upstream
 ```
 
 ---
@@ -122,11 +130,11 @@ sudo apt-get install -y build-essential libsqlite3-dev libssl-dev pkg-config \
 
 | Secret Name      | Description                     |
 | ---------------- | ------------------------------- |
-| DEPLOY\_HOST     | Server hostname or IP           |
-| DEPLOY\_USER     | Deploy username                 |
-| DEPLOY\_SSH\_KEY | Private SSH key for deploy user |
-| GITHUB\_TOKEN    | Default GitHub Actions token    |
-| CLOUDFLARE\_API\_TOKEN | Cloudflare API token for DNS-01 (optional) |
+| DEPLOY_HOST     | Server hostname or IP           |
+| DEPLOY_USER     | Deploy username                 |
+| DEPLOY_SSH_KEY | Private SSH key for deploy user |
+| GITHUB_TOKEN    | Default GitHub Actions token    |
+| CLOUDFLARE_API_TOKEN | Cloudflare API token for DNS-01 (optional) |
 
 ### 3. Configs
 
@@ -166,6 +174,7 @@ DASHBOARD_DOMAIN=dashboard.relay.bitcoindistrict.org
 # Blossom media server
 BLOSSOM_ENABLED=true
 BLOSSOM_DOMAIN=media.relay.bitcoindistrict.org
+BLOSSOM_DEPLOY_MODE=container   # container | source
 BLOSSOM_CONTAINER_IMAGE=ghcr.io/hzrd149/blossom-server:master
 BLOSSOM_PORT=3300
 BLOSSOM_MAX_UPLOAD_MB=16
@@ -209,6 +218,11 @@ When Cloudflare is enabled, certificates are issued via DNS-01 and work with pro
   * Checks upstream `strfry` repo for updates.
   * Runs build and runtime checks.
   * Opens a PR if the submodule can be safely updated.
+* **auto-bump-blossom.yml**
+
+  * Checks upstream `blossom-server` repo for updates.
+  * Installs dependencies and builds for smoke test.
+  * Opens a PR if the submodule can be safely updated.
 * **deploy.yml**
 
   * Triggered on `main` push.
@@ -246,15 +260,16 @@ sudo journalctl -u strfry -f
 
 ---
 
-## Blossom Media Server Integration (Plan)
+## Blossom Media Server Integration
 
-We will add a Blossom media server to the stack to handle blob storage (images/files) using the upstream implementation. Reference: [hzrd149/blossom-server](https://github.com/hzrd149/blossom-server).
+Blossom is integrated as a submodule so upstream updates arrive via PR. Reference: [hzrd149/blossom-server](https://github.com/hzrd149/blossom-server).
 
-### What we'll add
+### What we run
 
-- Service `blossom-server` on the relay host (containerized by default for reproducibility).
-- Repo-controlled config at `configs/blossom/config.yml`.
-- Systemd unit `configs/blossom/blossom.service` to manage the service.
+- Service `blossom-server` on the relay host. You can choose deploy mode:
+  - `container` (default): runs `ghcr.io/hzrd149/blossom-server:master` under systemd
+  - `source`: builds and runs from submodule (`blossom-server/`) under systemd
+- Repo-controlled config at `configs/blossom/config.yml` (rendered to `/etc/blossom/config.yml`).
 - Nginx vhost for `BLOSSOM_DOMAIN` with TLS and reverse proxy to localhost.
 - Upload gating: Only NIP‑05 verified pubkeys may upload; reads remain public.
 
@@ -263,6 +278,7 @@ We will add a Blossom media server to the stack to handle blob storage (images/f
 ```
 BLOSSOM_ENABLED=true
 BLOSSOM_DOMAIN=media.relay.bitcoindistrict.org
+BLOSSOM_DEPLOY_MODE=container   # container | source
 BLOSSOM_CONTAINER_IMAGE=ghcr.io/hzrd149/blossom-server:master
 BLOSSOM_PORT=3300
 BLOSSOM_MAX_UPLOAD_MB=16
@@ -273,11 +289,8 @@ BLOSSOM_ALLOWLIST_FILE=/etc/blossom/allowlist.txt
 Notes:
 - Certificates are issued the same way as the relay (HTTP‑01 or Cloudflare DNS‑01).
 - `BLOSSOM_PORT` listens on `127.0.0.1`; nginx handles public TLS on `BLOSSOM_DOMAIN`.
-- A non-container option (Node under systemd using npx) will be supported via a flag; container is default.
 
 ### NIP‑05 gate (uploads)
-
-We will enforce uploads from Nostr verified pubkeys via an auth proxy in front of Blossom:
 
 - Require NIP‑98 signed requests to authenticate the uploader's pubkey.
 - Require header `X-NIP05: <name@domain>`; resolve and verify `.well-known/nostr.json` maps to the authenticated pubkey.
@@ -288,15 +301,15 @@ We will enforce uploads from Nostr verified pubkeys via an auth proxy in front o
 
 Downloads remain public.
 
-### Files to be added
+### Files of interest
 
 - `configs/blossom/config.yml`: Base server config (data dir `/var/lib/blossom`, base URL `https://${BLOSSOM_DOMAIN}`, limits from env).
-- `configs/blossom/blossom.service`: Systemd unit (container or node mode) with persistent data volume.
-- `configs/nginx/${BLOSSOM_DOMAIN}.conf`: Nginx vhost with TLS, caching headers, gzip, proxy to `127.0.0.1:${BLOSSOM_PORT}`; `auth_request` on upload endpoints when gated.
-- `scripts/blossom-auth-proxy/`: Minimal service validating NIP‑98 and NIP‑05; returns 2xx/4xx for nginx `auth_request`.
-- `scripts/deploy.sh`: Add gated provisioning behind `BLOSSOM_ENABLED`.
+- `configs/blossom/blossom.service`: Systemd unit (container mode).
+- `configs/blossom/blossom-from-source.service`: Systemd unit (source mode; builds + starts Node).
+- `configs/nginx/blossom.conf`: Reference nginx vhost; runtime is rendered by `scripts/deploy.sh`.
+- `scripts/nostr-auth-proxy/`: Minimal service validating NIP‑98 and NIP‑05; returns 2xx/4xx for nginx `auth_request`.
 
-### Client upload example (preview)
+### Client upload example
 
 ```bash
 curl -X POST \
@@ -318,14 +331,6 @@ NIP‑98 reference: kind 27235 events with empty content, `u` (absolute URL) and
   - `DOMAIN`, `CERTBOT_EMAIL`, `DASHBOARD_*`, `BLOSSOM_*`, `NOSTR_AUTH_*`.
 - Files managed by deploy script:
   - `/etc/blossom/config.yml` and `/etc/default/*` are generated from `configs/` and env values.
-
-### Rollout plan
-
-1. Commit new config, systemd unit, nginx vhost, and auth proxy; guard with `BLOSSOM_ENABLED`.
-2. Extend `deploy.sh` to provision Docker (if needed), install files, obtain certs, start services, and smoke‑test.
-3. Stage with `BLOSSOM_GATE_MODE=allowlist` and verify uploads/reads end‑to‑end.
-4. Switch to `BLOSSOM_GATE_MODE=nip05` and validate NIP‑98/NIP‑05 flow.
-5. Enable in production.
 
 ---
 

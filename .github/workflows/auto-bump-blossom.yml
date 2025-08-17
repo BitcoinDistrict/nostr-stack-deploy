@@ -1,0 +1,107 @@
+name: Auto Bump Blossom Submodule
+
+on:
+  schedule:
+    - cron: '15 0 * * *'  # daily at 00:15 UTC
+  workflow_dispatch:      # manual trigger
+
+concurrency:
+  group: auto-bump-blossom
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump-submodule:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Check for latest upstream commit
+        id: check
+        run: |
+          cd blossom-server
+          git fetch origin
+          # Upstream default branch is 'master'
+          LATEST_SHA=$(git rev-parse origin/master)
+          cd ..
+          CURRENT_SHA=$(git ls-tree HEAD blossom-server | awk '{print $3}')
+
+          echo "current_sha=$CURRENT_SHA" >> $GITHUB_OUTPUT
+          echo "latest_sha=$LATEST_SHA" >> $GITHUB_OUTPUT
+          if [ "$CURRENT_SHA" = "$LATEST_SHA" ]; then
+            echo "update_needed=false" >> $GITHUB_OUTPUT
+          else
+            echo "update_needed=true" >> $GITHUB_OUTPUT
+          fi
+
+          if [ "$CURRENT_SHA" = "$LATEST_SHA" ]; then
+            echo "✅ blossom-server is already up to date"
+            exit 0
+          fi
+
+          echo "⬆️ New upstream commit found: $LATEST_SHA"
+
+      - name: Update submodule to latest
+        if: steps.check.outputs.update_needed == 'true'
+        run: |
+          cd blossom-server
+          git checkout ${{ steps.check.outputs.latest_sha }}
+          cd ..
+          git add blossom-server
+          git commit -m "chore: bump blossom-server submodule to ${{ steps.check.outputs.latest_sha }}"
+          git push origin HEAD:bump-blossom-submodule || true
+
+      - name: Setup Node.js and pnpm
+        if: steps.check.outputs.update_needed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Enable corepack and install pnpm
+        if: steps.check.outputs.update_needed == 'true'
+        run: |
+          corepack enable
+          corepack prepare pnpm@9 --activate
+          pnpm -v
+          node -v
+
+      - name: Build blossom-server (smoke test)
+        if: steps.check.outputs.update_needed == 'true'
+        run: |
+          set -euo pipefail
+          cd blossom-server
+          pnpm install --frozen-lockfile=false
+          cd admin && pnpm install --frozen-lockfile=false && cd ..
+          pnpm build
+
+      - name: Create Pull Request
+        if: steps.check.outputs.update_needed == 'true'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: bump-blossom-submodule
+          commit-message: "chore: bump blossom-server submodule"
+          title: "⬆️ Bump blossom-server submodule"
+          body: |
+            This PR updates the `blossom-server` submodule to the latest upstream commit.
+
+            - Previous SHA: ${{ steps.check.outputs.current_sha }}
+            - New SHA: ${{ steps.check.outputs.latest_sha }}
+
+            ✅ Verified that blossom-server installs and builds successfully with pnpm.
+          base: main
+
+

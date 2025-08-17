@@ -1,0 +1,22 @@
+[Unit]
+Description=Blossom Media Server (from source)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=deploy
+WorkingDirectory=/home/deploy/nostr-stack-deploy/blossom-server
+Environment=BLOSSOM_CONFIG_FILE=/etc/blossom/config.yml
+ExecStart=/bin/bash -lc 'PATH=$HOME/.local/bin:$PATH; export NODE_ENV=production; \
+  if ! command -v pnpm >/dev/null 2>&1; then corepack enable && corepack prepare pnpm@9 --activate; fi; \
+  pnpm install --frozen-lockfile=false; cd admin && pnpm install --frozen-lockfile=false && cd ..; \
+  pnpm build; \
+  node . --config $BLOSSOM_CONFIG_FILE'
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+
+

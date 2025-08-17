@@ -19,9 +19,10 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Record strfry submodule commit
+      - name: Record submodule commits
         run: |
           git -C strfry rev-parse HEAD > strfry/.commit
+          git -C blossom-server rev-parse HEAD > blossom-server/.commit
 
       - name: Setup SSH
         run: |
@@ -101,6 +102,7 @@ jobs:
             BLOSSOM_ENABLED=${{ vars.BLOSSOM_ENABLED }} \\
             BLOSSOM_DOMAIN=${{ vars.BLOSSOM_DOMAIN }} \\
             BLOSSOM_CONTAINER_IMAGE=${{ vars.BLOSSOM_CONTAINER_IMAGE }} \\
+            BLOSSOM_DEPLOY_MODE=${{ vars.BLOSSOM_DEPLOY_MODE }} \\
             BLOSSOM_PORT=${{ vars.BLOSSOM_PORT }} \\
             BLOSSOM_MAX_UPLOAD_MB=${{ vars.BLOSSOM_MAX_UPLOAD_MB }} \\
             BLOSSOM_GATE_MODE=${{ vars.BLOSSOM_GATE_MODE }} \\

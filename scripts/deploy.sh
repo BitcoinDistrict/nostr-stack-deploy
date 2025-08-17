@@ -37,6 +37,7 @@ DASHBOARD_DOMAIN="${DASHBOARD_DOMAIN:-dashboard.relay.bitcoindistrict.org}"
 # Optional Blossom media server deployment
 BLOSSOM_ENABLED="${BLOSSOM_ENABLED:-false}"
 BLOSSOM_DOMAIN="${BLOSSOM_DOMAIN:-media.${DOMAIN}}"
+BLOSSOM_DEPLOY_MODE="${BLOSSOM_DEPLOY_MODE:-container}"
 BLOSSOM_CONTAINER_IMAGE="${BLOSSOM_CONTAINER_IMAGE:-ghcr.io/hzrd149/blossom-server:master}"
 BLOSSOM_PORT="${BLOSSOM_PORT:-3300}"
 BLOSSOM_MAX_UPLOAD_MB="${BLOSSOM_MAX_UPLOAD_MB:-16}"
@@ -304,11 +305,24 @@ if to_bool "$BLOSSOM_ENABLED"; then
     echo "🌸 Installing Blossom (domain: ${BLOSSOM_DOMAIN})..."
 
     # Ensure docker is installed for containerized services
-    if ! command -v docker >/dev/null 2>&1; then
-        echo "🐳 Installing Docker..."
-        curl -fsSL https://get.docker.com | sudo sh
-        sudo systemctl enable --now docker || true
-        sudo usermod -aG docker "$USER" || true
+    if [ "$BLOSSOM_DEPLOY_MODE" = "container" ]; then
+        if ! command -v docker >/dev/null 2>&1; then
+            echo "🐳 Installing Docker..."
+            curl -fsSL https://get.docker.com | sudo sh
+            sudo systemctl enable --now docker || true
+            sudo usermod -aG docker "$USER" || true
+        fi
+    else
+        # Source mode requires Node.js (v20+) and corepack
+        if ! command -v node >/dev/null 2>&1; then
+            echo "⬇️ Installing Node.js 20 (required for blossom source mode)..."
+            curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+            sudo apt-get install -y nodejs
+        fi
+        if ! command -v corepack >/dev/null 2>&1; then
+            echo "🔧 Enabling corepack..."
+            sudo corepack enable || true
+        fi
     fi
 
     # Prepare runtime directories and config
@@ -328,6 +342,12 @@ limits:
   max_upload_mb: ${BLOSSOM_MAX_UPLOAD_MB}
 EOF"
 
+    # In source mode, ensure the app sees config.yml in its working directory
+    if [ "$BLOSSOM_DEPLOY_MODE" = "source" ]; then
+        sudo ln -sf /etc/blossom/config.yml /home/deploy/nostr-stack-deploy/blossom-server/config.yml
+        sudo chown deploy:deploy /home/deploy/nostr-stack-deploy/blossom-server/config.yml || true
+    fi
+
     # Write default files for systemd env overrides
     sudo mkdir -p /etc/default
     sudo bash -c "cat > /etc/default/blossom <<EOF
@@ -345,7 +365,11 @@ EOF"
 
     # Install systemd units (auth proxy + blossom)
     sudo cp "$REPO_DIR/configs/auth/nostr-auth-proxy.service" /etc/systemd/system/nostr-auth-proxy.service
-    sudo cp "$REPO_DIR/configs/blossom/blossom.service" /etc/systemd/system/blossom.service
+    if [ "$BLOSSOM_DEPLOY_MODE" = "source" ]; then
+        sudo cp "$REPO_DIR/configs/blossom/blossom-from-source.service" /etc/systemd/system/blossom.service
+    else
+        sudo cp "$REPO_DIR/configs/blossom/blossom.service" /etc/systemd/system/blossom.service
+    fi
     sudo systemctl daemon-reload
 
     # Build/start auth proxy first (needed for auth_request)
@@ -354,7 +378,7 @@ EOF"
         sudo systemctl restart nostr-auth-proxy.service
     fi
 
-    # Start blossom server container via systemd
+    # Start blossom server (container or source) via systemd
     sudo systemctl enable blossom.service
     sudo systemctl restart blossom.service
 
