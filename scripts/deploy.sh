@@ -440,6 +440,16 @@ server {
 
     # Public read endpoints
     location / {
+        # Handle CORS preflight early
+        if ($request_method = OPTIONS) {
+            add_header Access-Control-Allow-Origin "*" always;
+            add_header Access-Control-Allow-Methods "GET, HEAD, PUT, DELETE, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Authorization, *" always;
+            add_header Access-Control-Max-Age 86400 always;
+            add_header Content-Length 0;
+            add_header Content-Type text/plain;
+            return 204;
+        }
         proxy_pass http://blossom_upstream;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $client_ip;
@@ -448,30 +458,22 @@ server {
         client_max_body_size BLOSSOM_MAX_UPLOAD_MB_PLACEHOLDERm;
         # Ensure only one set of CORS headers (hide any from upstream)
         proxy_hide_header Access-Control-Allow-Origin;
-        proxy_hide_header Access-Control-Allow-Credentials;
-        proxy_hide_header Access-Control-Allow-Headers;
-        proxy_hide_header Access-Control-Allow-Methods;
-        proxy_hide_header Access-Control-Expose-Headers;
         # CORS headers for public endpoints
-        add_header Access-Control-Allow-Origin $http_origin always;
-        add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
-        add_header Access-Control-Allow-Headers "Authorization, Content-Type, X-NIP05, Accept, Origin" always;
-        add_header Access-Control-Allow-Credentials "true" always;
-        add_header Access-Control-Expose-Headers "Location, Content-Location, ETag" always;
-        add_header Vary "Origin" always;
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Access-Control-Expose-Headers "*" always;
+        add_header Access-Control-Allow-Headers "Authorization, *" always;
+        add_header Access-Control-Allow-Methods "GET, HEAD, PUT, DELETE, OPTIONS" always;
+        add_header Access-Control-Max-Age 86400 always;
     }
 
     # Upload endpoints (protect with auth_request when gate enabled)
     location /upload {
         # CORS preflight without auth
         if ($request_method = OPTIONS) {
-            add_header Access-Control-Allow-Origin $http_origin always;
-            add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
-            add_header Access-Control-Allow-Headers "Authorization, Content-Type, X-NIP05, Accept, Origin" always;
-            add_header Access-Control-Allow-Credentials "true" always;
+            add_header Access-Control-Allow-Origin "*" always;
+            add_header Access-Control-Allow-Methods "GET, HEAD, PUT, DELETE, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Authorization, *" always;
             add_header Access-Control-Max-Age 86400 always;
-            add_header Access-Control-Expose-Headers "Location, Content-Location, ETag" always;
-            add_header Vary "Origin" always;
             add_header Content-Length 0;
             add_header Content-Type text/plain;
             return 204;
@@ -486,17 +488,12 @@ server {
         client_max_body_size BLOSSOM_MAX_UPLOAD_MB_PLACEHOLDERm;
         # Ensure only one set of CORS headers (hide any from upstream)
         proxy_hide_header Access-Control-Allow-Origin;
-        proxy_hide_header Access-Control-Allow-Credentials;
-        proxy_hide_header Access-Control-Allow-Headers;
-        proxy_hide_header Access-Control-Allow-Methods;
-        proxy_hide_header Access-Control-Expose-Headers;
         # CORS headers on actual requests
-        add_header Access-Control-Allow-Origin $http_origin always;
-        add_header Access-Control-Allow-Methods "GET, POST, OPTIONS" always;
-        add_header Access-Control-Allow-Headers "Authorization, Content-Type, X-NIP05, Accept, Origin" always;
-        add_header Access-Control-Allow-Credentials "true" always;
-        add_header Access-Control-Expose-Headers "Location, Content-Location, ETag" always;
-        add_header Vary "Origin" always;
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Access-Control-Expose-Headers "*" always;
+        add_header Access-Control-Allow-Headers "Authorization, *" always;
+        add_header Access-Control-Allow-Methods "GET, HEAD, PUT, DELETE, OPTIONS" always;
+        add_header Access-Control-Max-Age 86400 always;
     }
 
     location = /__auth {
