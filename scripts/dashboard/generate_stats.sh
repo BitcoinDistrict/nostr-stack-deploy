@@ -75,24 +75,28 @@ generated_at="$(now_iso)"
 declare -A kinds_1h kinds_24h
 
 if [ -n "$STRFRY_BIN" ] && [ -x "$STRFRY_BIN" ]; then
+  # Compute UNIX timestamps for windows
+  since_1h=$(date -u -d '1 hour ago' +%s)
+  since_24h=$(date -u -d '24 hours ago' +%s)
+
   while IFS= read -r line; do
     [ -z "$line" ] && continue
     kind="${line%%:*}"
     count="${line##*:}"
     kinds_1h["$kind"]="$count"
-  done < <(count_kinds "1hour")
+  done < <(count_kinds "$since_1h")
 
   while IFS= read -r line; do
     [ -z "$line" ] && continue
     kind="${line%%:*}"
     count="${line##*:}"
     kinds_24h["$kind"]="$count"
-  done < <(count_kinds "1day")
+  done < <(count_kinds "$since_24h")
 
   # Capture output even if the pipeline exits non-zero (e.g., timeout),
   # then sanitize to a valid non-negative integer. This avoids cases like
   # "00" which would break JSON parsing.
-  unique_pubkeys_24h="$(count_unique_pubkeys "1day" || true)"
+  unique_pubkeys_24h="$(count_unique_pubkeys "$since_24h" || true)"
   if ! [[ "$unique_pubkeys_24h" =~ ^[0-9]+$ ]]; then
     unique_pubkeys_24h="0"
   fi
