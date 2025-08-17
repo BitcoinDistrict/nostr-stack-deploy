@@ -89,7 +89,15 @@ if [ -n "$STRFRY_BIN" ] && [ -x "$STRFRY_BIN" ]; then
     kinds_24h["$kind"]="$count"
   done < <(count_kinds "1day")
 
-  unique_pubkeys_24h="$(count_unique_pubkeys "1day" || echo 0)"
+  # Capture output even if the pipeline exits non-zero (e.g., timeout),
+  # then sanitize to a valid non-negative integer. This avoids cases like
+  # "00" which would break JSON parsing.
+  unique_pubkeys_24h="$(count_unique_pubkeys "1day" || true)"
+  if ! [[ "$unique_pubkeys_24h" =~ ^[0-9]+$ ]]; then
+    unique_pubkeys_24h="0"
+  fi
+  # Normalize to base-10 integer to remove any leading zeros (e.g., "00" → 0)
+  unique_pubkeys_24h=$((10#$unique_pubkeys_24h))
 else
   unique_pubkeys_24h="0"
 fi
