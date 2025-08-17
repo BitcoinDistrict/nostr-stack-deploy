@@ -443,7 +443,7 @@ server {
         # Handle CORS preflight early
         if ($request_method = OPTIONS) {
             add_header Access-Control-Allow-Origin "*" always;
-            add_header Access-Control-Allow-Methods "GET, HEAD, PUT, DELETE, OPTIONS" always;
+            add_header Access-Control-Allow-Methods "GET, HEAD, POST, PUT, DELETE, OPTIONS" always;
             add_header Access-Control-Allow-Headers "Authorization, *" always;
             add_header Access-Control-Max-Age 86400 always;
             add_header Content-Length 0;
@@ -466,7 +466,7 @@ server {
         add_header Access-Control-Allow-Origin "*" always;
         add_header Access-Control-Expose-Headers "*" always;
         add_header Access-Control-Allow-Headers "Authorization, *" always;
-        add_header Access-Control-Allow-Methods "GET, HEAD, PUT, DELETE, OPTIONS" always;
+        add_header Access-Control-Allow-Methods "GET, HEAD, POST, PUT, DELETE, OPTIONS" always;
         add_header Access-Control-Max-Age 86400 always;
     }
 
@@ -475,7 +475,17 @@ server {
         # CORS preflight without auth
         if ($request_method = OPTIONS) {
             add_header Access-Control-Allow-Origin "*" always;
-            add_header Access-Control-Allow-Methods "GET, HEAD, PUT, DELETE, OPTIONS" always;
+            add_header Access-Control-Allow-Methods "GET, HEAD, POST, PUT, DELETE, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Authorization, *" always;
+            add_header Access-Control-Max-Age 86400 always;
+            add_header Content-Length 0;
+            add_header Content-Type text/plain;
+            return 204;
+        }
+        # HEAD probe without auth
+        if ($request_method = HEAD) {
+            add_header Access-Control-Allow-Origin "*" always;
+            add_header Access-Control-Allow-Methods "GET, HEAD, POST, PUT, DELETE, OPTIONS" always;
             add_header Access-Control-Allow-Headers "Authorization, *" always;
             add_header Access-Control-Max-Age 86400 always;
             add_header Content-Length 0;
@@ -500,7 +510,47 @@ server {
         add_header Access-Control-Allow-Origin "*" always;
         add_header Access-Control-Expose-Headers "*" always;
         add_header Access-Control-Allow-Headers "Authorization, *" always;
-        add_header Access-Control-Allow-Methods "GET, HEAD, PUT, DELETE, OPTIONS" always;
+        add_header Access-Control-Allow-Methods "GET, HEAD, POST, PUT, DELETE, OPTIONS" always;
+        add_header Access-Control-Max-Age 86400 always;
+    }
+
+    # Explicit handler for /media (HEAD probe some clients perform)
+    location = /media {
+        # Preflight if sent
+        if ($request_method = OPTIONS) {
+            add_header Access-Control-Allow-Origin "*" always;
+            add_header Access-Control-Allow-Methods "GET, HEAD, POST, PUT, DELETE, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Authorization, *" always;
+            add_header Access-Control-Max-Age 86400 always;
+            add_header Content-Length 0;
+            add_header Content-Type text/plain;
+            return 204;
+        }
+        # HEAD check without touching upstream
+        if ($request_method = HEAD) {
+            add_header Access-Control-Allow-Origin "*" always;
+            add_header Access-Control-Allow-Methods "GET, HEAD, POST, PUT, DELETE, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Authorization, *" always;
+            add_header Access-Control-Expose-Headers "*" always;
+            add_header Access-Control-Max-Age 86400 always;
+            add_header Content-Length 0;
+            add_header Content-Type text/plain;
+            return 204;
+        }
+        proxy_pass http://blossom_upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $client_ip;
+        proxy_set_header X-Forwarded-For $client_ip;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_hide_header Access-Control-Allow-Origin;
+        proxy_hide_header Access-Control-Allow-Credentials;
+        proxy_hide_header Access-Control-Allow-Headers;
+        proxy_hide_header Access-Control-Allow-Methods;
+        proxy_hide_header Access-Control-Expose-Headers;
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Access-Control-Expose-Headers "*" always;
+        add_header Access-Control-Allow-Headers "Authorization, *" always;
+        add_header Access-Control-Allow-Methods "GET, HEAD, POST, PUT, DELETE, OPTIONS" always;
         add_header Access-Control-Max-Age 86400 always;
     }
 
