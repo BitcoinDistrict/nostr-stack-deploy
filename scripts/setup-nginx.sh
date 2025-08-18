@@ -58,13 +58,18 @@ for pem in /etc/letsencrypt/live/${DOMAIN}*/fullchain.pem; do
     break
   fi
 done
-if [ "$CERT_STATUS" = "ok" ] || [ -n "${CERT_DIR_REAL}" ]; then
-  if [ -n "${CERT_DIR_REAL}" ] && [ "${CERT_DIR_REAL}" != "/etc/letsencrypt/live/${DOMAIN}" ]; then
-    sudo ln -sfn "${CERT_DIR_REAL}" "/etc/letsencrypt/live/${DOMAIN}"
-  fi
-  envsubst '${DOMAIN}' < "${CONFIGS_DIR}/nginx/relay-https.conf.template" | sudo tee "${SITE_PATH}" >/dev/null
-  sudo nginx -t
+# Try to render HTTPS first; if nginx -t fails, fall back to HTTP
+if [ -n "${CERT_DIR_REAL}" ] && [ "${CERT_DIR_REAL}" != "/etc/letsencrypt/live/${DOMAIN}" ]; then
+  sudo ln -sfn "${CERT_DIR_REAL}" "/etc/letsencrypt/live/${DOMAIN}"
+fi
+envsubst '${DOMAIN}' < "${CONFIGS_DIR}/nginx/relay-https.conf.template" | sudo tee "${SITE_PATH}" >/dev/null
+sudo ln -sf "${SITE_PATH}" "${ENABLED_PATH}"
+if sudo nginx -t >/dev/null 2>&1; then
   sudo systemctl reload nginx
+else
+  envsubst '${DOMAIN}' < "${CONFIGS_DIR}/nginx/relay-http.conf.template" | sudo tee "${SITE_PATH}" >/dev/null
+  sudo ln -sf "${SITE_PATH}" "${ENABLED_PATH}"
+  sudo nginx -t && sudo systemctl reload nginx
 fi
 
 
