@@ -21,9 +21,9 @@ sudo chown -R deploy:deploy /var/lib/blossom || true
 # Render blossom config
 # Prefer template if present, else fallback to current config with env expansion
 if [ -f "${CONFIGS_DIR}/blossom/config.yml.template" ]; then
-  envsubst '${BLOSSOM_PORT},${BLOSSOM_DOMAIN},${BLOSSOM_MAX_UPLOAD_MB}' < "${CONFIGS_DIR}/blossom/config.yml.template" | sudo tee /etc/blossom/config.yml >/dev/null
+  envsubst '${BLOSSOM_PORT} ${BLOSSOM_DOMAIN} ${BLOSSOM_MAX_UPLOAD_MB}' < "${CONFIGS_DIR}/blossom/config.yml.template" | sudo tee /etc/blossom/config.yml >/dev/null
 else
-  envsubst '${BLOSSOM_PORT},${BLOSSOM_DOMAIN},${BLOSSOM_MAX_UPLOAD_MB}' < "${CONFIGS_DIR}/blossom/config.yml" | sudo tee /etc/blossom/config.yml >/dev/null
+  envsubst '${BLOSSOM_PORT} ${BLOSSOM_DOMAIN} ${BLOSSOM_MAX_UPLOAD_MB}' < "${CONFIGS_DIR}/blossom/config.yml" | sudo tee /etc/blossom/config.yml >/dev/null
 fi
 
 # /etc/default env files
@@ -87,7 +87,7 @@ sudo systemctl restart blossom.service
 
 # Nginx HTTP vhost for ACME
 BLOSSOM_SITE_PATH="/etc/nginx/sites-available/${BLOSSOM_DOMAIN}"
-envsubst '${BLOSSOM_DOMAIN},${BLOSSOM_PORT}' < "${CONFIGS_DIR}/nginx/blossom-http.conf.template" | sudo tee "${BLOSSOM_SITE_PATH}" >/dev/null
+envsubst '${BLOSSOM_DOMAIN} ${BLOSSOM_PORT}' < "${CONFIGS_DIR}/nginx/blossom-http.conf.template" | sudo tee "${BLOSSOM_SITE_PATH}" >/dev/null
 sudo ln -sf "${BLOSSOM_SITE_PATH}" "/etc/nginx/sites-enabled/${BLOSSOM_DOMAIN}"
 sudo nginx -t && sudo systemctl reload nginx
 
@@ -103,7 +103,7 @@ else
 fi
 
 if [ -f "/etc/letsencrypt/live/${BLOSSOM_DOMAIN}/fullchain.pem" ]; then
-  envsubst '${BLOSSOM_DOMAIN},${BLOSSOM_PORT},${NOSTR_AUTH_PORT},${BLOSSOM_MAX_UPLOAD_MB}' < "${CONFIGS_DIR}/nginx/blossom.conf.template" | sudo tee "${BLOSSOM_SITE_PATH}" >/dev/null
+  envsubst '${BLOSSOM_DOMAIN} ${BLOSSOM_PORT} ${NOSTR_AUTH_PORT} ${BLOSSOM_MAX_UPLOAD_MB}' < "${CONFIGS_DIR}/nginx/blossom.conf.template" | sudo tee "${BLOSSOM_SITE_PATH}" >/dev/null
   # If gate is open OR nostr-auth-proxy is disabled, remove auth_request from nginx conf
   if [ "${BLOSSOM_GATE_MODE}" = "open" ] || ! to_bool "${NOSTR_AUTH_ENABLED}"; then
     sudo sed -i "/auth_request \\/__auth;/d" "${BLOSSOM_SITE_PATH}"
