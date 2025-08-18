@@ -37,8 +37,9 @@ load_env_file_preserving_existing() {
     if [[ "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=(.*)$ ]]; then
       local key="${BASH_REMATCH[1]}"
       local val="${BASH_REMATCH[2]}"
-      # Trim leading spaces in value
-      val="${val#*[![:space:]]}"
+      # Trim leading spaces from value (preserve first non-space)
+      local leading_ws="${val%%[![:space:]]*}"
+      val="${val#${leading_ws}}"
       # Remove optional surrounding quotes
       if [[ "$val" =~ ^"(.*)"$ ]]; then
         val="${BASH_REMATCH[1]}"
