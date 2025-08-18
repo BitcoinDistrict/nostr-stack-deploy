@@ -17,6 +17,8 @@ fi
 
 sudo mkdir -p /var/lib/blossom /etc/blossom /etc/default /var/www/certbot
 sudo chown -R deploy:deploy /var/lib/blossom || true
+sudo mkdir -p /var/www/blossom-ui
+sudo cp -r "${REPO_DIR}/web/blossom-ui/"* /var/www/blossom-ui/ || true
 
 # Render blossom config
 # Prefer template if present, else fallback to current config with env expansion

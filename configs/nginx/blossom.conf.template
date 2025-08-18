@@ -19,6 +19,13 @@ server {
     ssl_certificate /etc/letsencrypt/live/${BLOSSOM_DOMAIN}/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/${BLOSSOM_DOMAIN}/privkey.pem;
 
+    # Minimal UI at root (optional)
+    location = / {
+        root /var/www/blossom-ui;
+        index index.html;
+    }
+
+    # API/default routes
     location / {
         if ($request_method = OPTIONS) {
             add_header Access-Control-Allow-Origin "*" always;

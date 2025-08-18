@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Blossom Uploader</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 2rem; color: #111; }
+      .card { max-width: 560px; margin: 0 auto; padding: 1.5rem; border: 1px solid #ddd; border-radius: 12px; }
+      h1 { font-size: 1.25rem; margin: 0 0 0.75rem; }
+      .row { margin: 0.75rem 0; }
+      input[type="text"], input[type="file"] { width: 100%; padding: 0.5rem; border: 1px solid #ccc; border-radius: 8px; }
+      button { padding: 0.6rem 1rem; border: 0; border-radius: 8px; background: #111; color: #fff; cursor: pointer; }
+      button:disabled { background: #888; cursor: not-allowed; }
+      .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+      .muted { color: #666; }
+      .success { color: #146c43; }
+      .error { color: #b02a37; }
+      .link { color: #0d6efd; word-break: break-all; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Blossom Uploader</h1>
+      <div class="row">
+        <label class="muted">File</label>
+        <input type="file" id="file" />
+      </div>
+      <div class="row">
+        <label class="muted">Authorization (NIP-98 Authorization header)</label>
+        <input id="auth" type="text" placeholder="Nostr <signed-event>" />
+      </div>
+      <div class="row">
+        <label class="muted">X-NIP05 (optional, e.g. alice@example.com)</label>
+        <input id="nip05" type="text" placeholder="name@example.com" />
+      </div>
+      <div class="row">
+        <button id="uploadBtn">Upload</button>
+      </div>
+      <div id="status" class="row muted">Ready.</div>
+      <div id="result" class="row"></div>
+    </div>
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const status = (t, cls = "muted") => { const s=$("status"); s.className = "row "+cls; s.textContent = t; };
+      const link = (url) => `<a class="link" href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`;
+
+      $("uploadBtn").onclick = async () => {
+        const f = $("file").files[0];
+        if (!f) { status("Choose a file first", "error"); return; }
+        const auth = $("auth").value.trim();
+        const nip05 = $("nip05").value.trim();
+        $("uploadBtn").disabled = true;
+        status("Uploading...");
+        try {
+          const form = new FormData();
+          form.append("file", f);
+          const headers = {};
+          if (auth) headers["Authorization"] = auth;
+          if (nip05) headers["X-NIP05"] = nip05;
+          const resp = await fetch("/upload", { method: "POST", body: form, headers });
+          const ok = resp.ok;
+          const ct = resp.headers.get("content-type") || "";
+          let body = await (ct.includes("application/json") ? resp.json() : resp.text());
+          if (ok) {
+            const url = (typeof body === 'object' && body && body.url) ? body.url : (body.url || body);
+            $("result").innerHTML = `Uploaded: ${link(url)}`;
+            status("Success", "success");
+          } else {
+            $("result").innerText = typeof body === 'object' ? JSON.stringify(body, null, 2) : body;
+            status(`Error ${resp.status}`, "error");
+          }
+        } catch (e) {
+          $("result").innerText = String(e);
+          status("Network error", "error");
+        } finally {
+          $("uploadBtn").disabled = false;
+        }
+      };
+    </script>
+  </body>
+  </html>
+
+
