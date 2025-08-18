@@ -14,3 +14,13 @@ limits:
   max_upload_mb: ${BLOSSOM_MAX_UPLOAD_MB:-16}
 
 
+# Enable upload and media endpoints by default; auth is enforced by nginx auth_request
+upload:
+  enabled: true
+  requireAuth: false
+
+media:
+  enabled: true
+  requireAuth: false
+
+

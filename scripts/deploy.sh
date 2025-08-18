@@ -326,6 +326,15 @@ storage:
 
 limits:
   max_upload_mb: ${BLOSSOM_MAX_UPLOAD_MB}
+
+# Enable upload and media endpoints (nginx handles auth via auth_request)
+upload:
+  enabled: true
+  requireAuth: false
+
+media:
+  enabled: true
+  requireAuth: false
 EOF"
 
     # Write default files for systemd env overrides
