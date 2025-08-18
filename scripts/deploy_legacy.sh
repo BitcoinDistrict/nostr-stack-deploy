@@ -365,6 +365,8 @@ Wants=network-online.target docker.service
 [Service]
 Type=simple
 EnvironmentFile=-/etc/default/nostr-auth-proxy
+ExecStartPre=-/usr/bin/docker kill nostr-auth-proxy
+ExecStartPre=-/usr/bin/docker rm -f nostr-auth-proxy
 ExecStartPre=/usr/bin/docker build -t nostr-auth-proxy:local /home/deploy/nostr-stack-deploy/scripts/nostr-auth-proxy
 ExecStart=/bin/bash -lc '/usr/bin/docker run --rm \
   --name nostr-auth-proxy \
@@ -378,6 +380,7 @@ ExecStart=/bin/bash -lc '/usr/bin/docker run --rm \
   VOLUME_MOUNT_PLACEHOLDER \
   nostr-auth-proxy:local'
 Restart=always
+ExecStop=-/usr/bin/docker stop -t 10 nostr-auth-proxy
 RestartSec=5
 
 [Install]
