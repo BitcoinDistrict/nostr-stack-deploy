@@ -10,6 +10,9 @@ const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
 const GATE_MODE = process.env.GATE_MODE || 'nip05';
 const ALLOWLIST_FILE = process.env.ALLOWLIST_FILE || '';
 const SKEW_SECONDS = Number(process.env.SKEW_SECONDS || 60);
+// If provided, when X-NIP05 is absent we will verify that the signer pubkey
+// appears in this domain's .well-known/nostr.json names map
+const REQUIRED_NIP05_DOMAIN = (process.env.REQUIRED_NIP05_DOMAIN || process.env.NOSTR_AUTH_REQUIRED_NIP05_DOMAIN || '').toLowerCase();
 
 const log = (level, msg, ctx = {}) => {
   const levels = ['error', 'warn', 'info', 'debug'];
@@ -19,6 +22,7 @@ const log = (level, msg, ctx = {}) => {
 };
 
 const nip05Cache = new Map();
+const domainJsonCache = new Map();
 
 async function readAllowlist() {
   if (!ALLOWLIST_FILE) return new Set();
@@ -84,6 +88,52 @@ function verifyNip98(authHeader, ctx = {}) {
   return pubkey.toLowerCase();
 }
 
+function verifyLegacy24242(authHeader, ctx = {}) {
+  if (!authHeader || !authHeader.startsWith('Nostr ')) return null;
+  const payloadB64 = authHeader.slice('Nostr '.length).trim();
+  let event;
+  try {
+    const json = Buffer.from(payloadB64, 'base64url').toString('utf8');
+    event = JSON.parse(json);
+  } catch (e) {
+    return null;
+  }
+
+  const { pubkey, sig, id, kind, created_at, tags, content } = event || {};
+  if (!pubkey || !sig || !id || typeof kind !== 'number' || !Array.isArray(tags)) return null;
+  if (kind !== 24242) return null;
+
+  try {
+    const serialized = JSON.stringify([0, pubkey, created_at, kind, tags, content ?? '']);
+    const recomputed = bytesToHex(sha256(Buffer.from(serialized)));
+    if (recomputed !== id.toLowerCase()) return null;
+    const ok = secp256k1.schnorr.verify(hexToBytes(sig), hexToBytes(id), hexToBytes(pubkey));
+    if (!ok) return null;
+  } catch (_) {
+    return null;
+  }
+
+  // Require tag t=upload
+  const tTag = (tags || []).find((t) => Array.isArray(t) && t[0] === 't');
+  if (!tTag || String(tTag[1]).toLowerCase() !== 'upload') return null;
+  // Require not expired per expiration tag
+  const expTag = (tags || []).find((t) => Array.isArray(t) && t[0] === 'expiration');
+  if (!expTag) return null;
+  const exp = Number(expTag[1] || 0);
+  const now = Math.floor(Date.now() / 1000);
+  if (!Number.isFinite(exp) || now > exp) return null;
+
+  return pubkey.toLowerCase();
+}
+
+function verifyAnyAuth(authHeader, ctx = {}) {
+  const pk98 = verifyNip98(authHeader, ctx);
+  if (pk98) return pk98;
+  const pk24242 = verifyLegacy24242(authHeader, ctx);
+  if (pk24242) return pk24242;
+  return null;
+}
+
 async function resolveNip05(nameAtDomain) {
   const key = nameAtDomain.toLowerCase();
   const cached = nip05Cache.get(key);
@@ -110,6 +160,27 @@ async function resolveNip05(nameAtDomain) {
   }
 }
 
+async function domainHasPubkey(domain, pubkey) {
+  const key = `domain:${domain}`;
+  const cached = domainJsonCache.get(key);
+  const now = Math.floor(Date.now() / 1000);
+  if (cached && cached.expiresAt > now) return cached.pubkeys.has(pubkey);
+
+  try {
+    const url = `https://${domain}/.well-known/nostr.json`;
+    const res = await fetch(url, { timeout: 5000 });
+    if (!res.ok) return false;
+    const data = await res.json();
+    const names = (data?.names) || {};
+    const set = new Set(Object.values(names).map((v) => String(v || '').toLowerCase()).filter(Boolean));
+    domainJsonCache.set(key, { pubkeys: set, expiresAt: now + CACHE_TTL });
+    return set.has(pubkey);
+  } catch (e) {
+    log('warn', 'domain nostr.json fetch failed', { domain, error: String(e) });
+    return false;
+  }
+}
+
 const router = Router();
 router.get('/health', () => new Response('ok'));
 
@@ -124,8 +195,8 @@ router.all('/auth', async (request) => {
   const scheme = request.headers.get('x-original-scheme') || 'https';
   const expectedUrl = `${scheme}://${host}${uri}`;
 
-  const pubkey = verifyNip98(authz, { expectedUrl, expectedMethod: method });
-  if (!pubkey) return new Response('missing/invalid NIP-98', { status: 401 });
+  const pubkey = verifyAnyAuth(authz, { expectedUrl, expectedMethod: method });
+  if (!pubkey) return new Response('missing/invalid authorization', { status: 401 });
 
   if (GATE_MODE === 'allowlist') {
     const list = await readAllowlist();
@@ -133,10 +204,21 @@ router.all('/auth', async (request) => {
     return new Response('forbidden', { status: 403 });
   }
 
-  if (!nip05) return new Response('missing X-NIP05', { status: 400 });
-  const resolved = await resolveNip05(nip05);
-  if (!resolved) return new Response('nip05 not found', { status: 403 });
-  if (resolved !== pubkey) return new Response('nip05/pubkey mismatch', { status: 403 });
+  // nip05 mode
+  if (nip05) {
+    const resolved = await resolveNip05(nip05);
+    if (!resolved) return new Response('nip05 not found', { status: 403 });
+    if (resolved !== pubkey) return new Response('nip05/pubkey mismatch', { status: 403 });
+    return new Response('ok', { status: 200 });
+  }
+
+  if (REQUIRED_NIP05_DOMAIN) {
+    const ok = await domainHasPubkey(REQUIRED_NIP05_DOMAIN, pubkey);
+    if (!ok) return new Response('nip05 not verified on required domain', { status: 403 });
+    return new Response('ok', { status: 200 });
+  }
+
+  return new Response('missing X-NIP05', { status: 400 });
   return new Response('ok', { status: 200 });
 });
 
