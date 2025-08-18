@@ -42,8 +42,14 @@ else
   fi
 fi
 
-# If certificate exists, render HTTPS config (only substitute ${DOMAIN})
-if [ "$CERT_STATUS" = "ok" ] || [ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]; then
+# Normalize live cert path (handles certbot creating -0001, -0002 lineages)
+if [ "$CERT_STATUS" = "ok" ] || ls "/etc/letsencrypt/live/${DOMAIN}"*/fullchain.pem >/dev/null 2>&1; then
+  if ls "/etc/letsencrypt/live/${DOMAIN}"*/fullchain.pem >/dev/null 2>&1; then
+    CERT_DIR_REAL=$(dirname $(ls -1 "/etc/letsencrypt/live/${DOMAIN}"*/fullchain.pem | head -n1))
+    if [ "$CERT_DIR_REAL" != "/etc/letsencrypt/live/${DOMAIN}" ]; then
+      sudo ln -sfn "$CERT_DIR_REAL" "/etc/letsencrypt/live/${DOMAIN}"
+    fi
+  fi
   envsubst '${DOMAIN}' < "${CONFIGS_DIR}/nginx/relay-https.conf.template" | sudo tee "${SITE_PATH}" >/dev/null
   sudo nginx -t
   sudo systemctl reload nginx

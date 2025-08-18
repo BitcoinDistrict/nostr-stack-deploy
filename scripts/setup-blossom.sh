@@ -109,7 +109,14 @@ else
   sudo certbot certonly --nginx -d "${BLOSSOM_DOMAIN}" --non-interactive --agree-tos -m "${CERTBOT_EMAIL}" || true
 fi
 
-if [ -f "/etc/letsencrypt/live/${BLOSSOM_DOMAIN}/fullchain.pem" ]; then
+# Normalize live cert path (handles certbot creating -0001, -0002 lineages)
+if ls "/etc/letsencrypt/live/${BLOSSOM_DOMAIN}"*/fullchain.pem >/dev/null 2>&1; then
+  CERT_DIR_REAL=$(dirname $(ls -1 "/etc/letsencrypt/live/${BLOSSOM_DOMAIN}"*/fullchain.pem | head -n1))
+  # Ensure stable symlink without suffix
+  if [ "$CERT_DIR_REAL" != "/etc/letsencrypt/live/${BLOSSOM_DOMAIN}" ]; then
+    sudo ln -sfn "$CERT_DIR_REAL" "/etc/letsencrypt/live/${BLOSSOM_DOMAIN}"
+  fi
+
   # Ensure no stale .conf files shadow this vhost
   sudo rm -f \
     "/etc/nginx/sites-available/${BLOSSOM_DOMAIN}.conf" \
