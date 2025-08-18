@@ -11,6 +11,13 @@ ENABLED_PATH="/etc/nginx/sites-enabled/${DOMAIN}"
 sudo find /etc/nginx/sites-available -maxdepth 1 -type f -name "*DOMAIN=*" -print -exec sudo rm -f {} + || true
 sudo find /etc/nginx/sites-enabled -maxdepth 1 -type l -name "*DOMAIN=*" -print -exec sudo rm -f {} + || true
 
+# Remove stale site files/symlinks that may shadow the generated vhost
+# Historically we used ".conf" suffix; ensure only "${DOMAIN}" remains active
+sudo rm -f \
+  "/etc/nginx/sites-available/${DOMAIN}.conf" \
+  "/etc/nginx/sites-enabled/${DOMAIN}.conf" || true
+sudo rm -f "/etc/nginx/sites-enabled/${DOMAIN}" || true
+
 sudo mkdir -p /var/www/certbot
 
 # Render initial HTTP config (only substitute ${DOMAIN}; preserve $http_* vars)

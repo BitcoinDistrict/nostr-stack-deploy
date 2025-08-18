@@ -89,6 +89,11 @@ sudo systemctl restart blossom.service
 
 # Nginx HTTP vhost for ACME
 BLOSSOM_SITE_PATH="/etc/nginx/sites-available/${BLOSSOM_DOMAIN}"
+# Ensure no stale .conf files shadow this vhost before writing
+sudo rm -f \
+  "/etc/nginx/sites-available/${BLOSSOM_DOMAIN}.conf" \
+  "/etc/nginx/sites-enabled/${BLOSSOM_DOMAIN}.conf" || true
+sudo rm -f "/etc/nginx/sites-enabled/${BLOSSOM_DOMAIN}" || true
 envsubst '${BLOSSOM_DOMAIN} ${BLOSSOM_PORT}' < "${CONFIGS_DIR}/nginx/blossom-http.conf.template" | sudo tee "${BLOSSOM_SITE_PATH}" >/dev/null
 sudo ln -sf "${BLOSSOM_SITE_PATH}" "/etc/nginx/sites-enabled/${BLOSSOM_DOMAIN}"
 sudo nginx -t && sudo systemctl reload nginx
@@ -105,6 +110,11 @@ else
 fi
 
 if [ -f "/etc/letsencrypt/live/${BLOSSOM_DOMAIN}/fullchain.pem" ]; then
+  # Ensure no stale .conf files shadow this vhost
+  sudo rm -f \
+    "/etc/nginx/sites-available/${BLOSSOM_DOMAIN}.conf" \
+    "/etc/nginx/sites-enabled/${BLOSSOM_DOMAIN}.conf" || true
+  sudo rm -f "/etc/nginx/sites-enabled/${BLOSSOM_DOMAIN}" || true
   envsubst '${BLOSSOM_DOMAIN} ${BLOSSOM_PORT} ${NOSTR_AUTH_PORT} ${BLOSSOM_MAX_UPLOAD_MB}' < "${CONFIGS_DIR}/nginx/blossom.conf.template" | sudo tee "${BLOSSOM_SITE_PATH}" >/dev/null
   # If gate is open OR nostr-auth-proxy is disabled, remove auth_request from nginx conf
   if [ "${BLOSSOM_GATE_MODE}" = "open" ] || ! to_bool "${NOSTR_AUTH_ENABLED}"; then
