@@ -99,6 +99,7 @@ sudo ln -sf "${BLOSSOM_SITE_PATH}" "/etc/nginx/sites-enabled/${BLOSSOM_DOMAIN}"
 sudo nginx -t && sudo systemctl reload nginx
 
 # Cert for Blossom
+echo "[blossom] Using CONFIGS_DIR=${CONFIGS_DIR}, BLOSSOM_DOMAIN=${BLOSSOM_DOMAIN}"
 if [ "${CLOUDFLARE_ENABLED}" = "true" ] && [ -n "${CLOUDFLARE_API_TOKEN}" ]; then
   CLOUDFLARE_INI="/etc/letsencrypt/cloudflare.ini"
   echo "dns_cloudflare_api_token = ${CLOUDFLARE_API_TOKEN}" | sudo tee "$CLOUDFLARE_INI" >/dev/null
@@ -117,23 +118,30 @@ for pem in /etc/letsencrypt/live/${BLOSSOM_DOMAIN}*/fullchain.pem; do
     break
   fi
 done
-if [ -n "${CERT_DIR_REAL}" ]; then
-  # Ensure stable symlink without suffix
-  if [ "${CERT_DIR_REAL}" != "/etc/letsencrypt/live/${BLOSSOM_DOMAIN}" ]; then
-    sudo ln -sfn "${CERT_DIR_REAL}" "/etc/letsencrypt/live/${BLOSSOM_DOMAIN}"
-  fi
+if [ -n "${CERT_DIR_REAL}" ] && [ "${CERT_DIR_REAL}" != "/etc/letsencrypt/live/${BLOSSOM_DOMAIN}" ]; then
+  echo "[blossom] Linking cert lineage: ${CERT_DIR_REAL} -> /etc/letsencrypt/live/${BLOSSOM_DOMAIN}"
+  sudo ln -sfn "${CERT_DIR_REAL}" "/etc/letsencrypt/live/${BLOSSOM_DOMAIN}"
+fi
 
-  # Ensure no stale .conf files shadow this vhost
-  sudo rm -f \
-    "/etc/nginx/sites-available/${BLOSSOM_DOMAIN}.conf" \
-    "/etc/nginx/sites-enabled/${BLOSSOM_DOMAIN}.conf" || true
-  sudo rm -f "/etc/nginx/sites-enabled/${BLOSSOM_DOMAIN}" || true
-  envsubst '${BLOSSOM_DOMAIN} ${BLOSSOM_PORT} ${NOSTR_AUTH_PORT} ${BLOSSOM_MAX_UPLOAD_MB}' < "${CONFIGS_DIR}/nginx/blossom.conf.template" | sudo tee "${BLOSSOM_SITE_PATH}" >/dev/null
-  # If gate is open OR nostr-auth-proxy is disabled, remove auth_request from nginx conf
-  if [ "${BLOSSOM_GATE_MODE}" = "open" ] || ! to_bool "${NOSTR_AUTH_ENABLED}"; then
-    sudo sed -i "/auth_request \\/__auth;/d" "${BLOSSOM_SITE_PATH}"
-  fi
-  # Ensure vhost is enabled after rewrite
+# Ensure no stale .conf files shadow this vhost
+sudo rm -f \
+  "/etc/nginx/sites-available/${BLOSSOM_DOMAIN}.conf" \
+  "/etc/nginx/sites-enabled/${BLOSSOM_DOMAIN}.conf" || true
+sudo rm -f "/etc/nginx/sites-enabled/${BLOSSOM_DOMAIN}" || true
+
+# Try to render HTTPS first; if nginx -t fails, fall back to HTTP
+echo "[blossom] Attempting HTTPS vhost render"
+envsubst '${BLOSSOM_DOMAIN} ${BLOSSOM_PORT} ${NOSTR_AUTH_PORT} ${BLOSSOM_MAX_UPLOAD_MB}' < "${CONFIGS_DIR}/nginx/blossom.conf.template" | sudo tee "${BLOSSOM_SITE_PATH}" >/dev/null
+if [ "${BLOSSOM_GATE_MODE}" = "open" ] || ! to_bool "${NOSTR_AUTH_ENABLED}"; then
+  sudo sed -i "/auth_request \\/__auth;/d" "${BLOSSOM_SITE_PATH}"
+fi
+sudo ln -sf "${BLOSSOM_SITE_PATH}" "/etc/nginx/sites-enabled/${BLOSSOM_DOMAIN}"
+if sudo nginx -t >/dev/null 2>&1; then
+  sudo systemctl reload nginx
+  echo "[blossom] HTTPS vhost applied"
+else
+  echo "[blossom] HTTPS vhost test failed; falling back to HTTP"
+  envsubst '${BLOSSOM_DOMAIN} ${BLOSSOM_PORT}' < "${CONFIGS_DIR}/nginx/blossom-http.conf.template" | sudo tee "${BLOSSOM_SITE_PATH}" >/dev/null
   sudo ln -sf "${BLOSSOM_SITE_PATH}" "/etc/nginx/sites-enabled/${BLOSSOM_DOMAIN}"
   sudo nginx -t && sudo systemctl reload nginx
 fi
