@@ -128,9 +128,9 @@ function verifyLegacy24242(authHeader, ctx = {}) {
 
 function verifyAnyAuth(authHeader, ctx = {}) {
   const pk98 = verifyNip98(authHeader, ctx);
-  if (pk98) return pk98;
+  if (pk98) return { pubkey: pk98, scheme: 'nip98' };
   const pk24242 = verifyLegacy24242(authHeader, ctx);
-  if (pk24242) return pk24242;
+  if (pk24242) return { pubkey: pk24242, scheme: '24242' };
   return null;
 }
 
@@ -195,29 +195,40 @@ router.all('/auth', async (request) => {
   const scheme = request.headers.get('x-original-scheme') || 'https';
   const expectedUrl = `${scheme}://${host}${uri}`;
 
-  const pubkey = verifyAnyAuth(authz, { expectedUrl, expectedMethod: method });
-  if (!pubkey) return new Response('missing/invalid authorization', { status: 401 });
+  const verified = verifyAnyAuth(authz, { expectedUrl, expectedMethod: method });
+  if (!verified) {
+    log('info', 'auth reject', { reason: 'missing/invalid authorization', host, uri, method });
+    return new Response('missing/invalid authorization', { status: 401 });
+  }
+  const { pubkey, scheme } = verified;
 
   if (GATE_MODE === 'allowlist') {
     const list = await readAllowlist();
-    if (list.has(pubkey)) return new Response('ok', { status: 200 });
+    if (list.has(pubkey)) {
+      log('info', 'auth ok', { mode: GATE_MODE, scheme, pubkey, host, uri, method });
+      return new Response('ok', { status: 200 });
+    }
+    log('info', 'auth reject', { reason: 'not in allowlist', mode: GATE_MODE, scheme, pubkey, host, uri, method });
     return new Response('forbidden', { status: 403 });
   }
 
   // nip05 mode
   if (nip05) {
     const resolved = await resolveNip05(nip05);
-    if (!resolved) return new Response('nip05 not found', { status: 403 });
-    if (resolved !== pubkey) return new Response('nip05/pubkey mismatch', { status: 403 });
+    if (!resolved) { log('info', 'auth reject', { reason: 'nip05 not found', nip05, scheme, pubkey, host, uri, method }); return new Response('nip05 not found', { status: 403 }); }
+    if (resolved !== pubkey) { log('info', 'auth reject', { reason: 'nip05/pubkey mismatch', nip05, scheme, pubkey, host, uri, method }); return new Response('nip05/pubkey mismatch', { status: 403 }); }
+    log('info', 'auth ok', { mode: GATE_MODE, scheme, pubkey, nip05, host, uri, method });
     return new Response('ok', { status: 200 });
   }
 
   if (REQUIRED_NIP05_DOMAIN) {
     const ok = await domainHasPubkey(REQUIRED_NIP05_DOMAIN, pubkey);
-    if (!ok) return new Response('nip05 not verified on required domain', { status: 403 });
+    if (!ok) { log('info', 'auth reject', { reason: 'not verified on required domain', domain: REQUIRED_NIP05_DOMAIN, scheme, pubkey, host, uri, method }); return new Response('nip05 not verified on required domain', { status: 403 }); }
+    log('info', 'auth ok', { mode: GATE_MODE, scheme, pubkey, domain: REQUIRED_NIP05_DOMAIN, host, uri, method });
     return new Response('ok', { status: 200 });
   }
 
+  log('info', 'auth reject', { reason: 'missing X-NIP05', scheme, pubkey, host, uri, method });
   return new Response('missing X-NIP05', { status: 400 });
   return new Response('ok', { status: 200 });
 });
