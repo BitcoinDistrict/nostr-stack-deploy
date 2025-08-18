@@ -93,7 +93,7 @@ server {
         add_header Access-Control-Max-Age 86400 always;
     }
 
-    location = /media {
+    location /media {
         if ($request_method = OPTIONS) {
             add_header Access-Control-Allow-Origin "*" always;
             add_header Access-Control-Allow-Methods "GET, HEAD, POST, PUT, DELETE, OPTIONS" always;
