@@ -192,8 +192,8 @@ router.all('/auth', async (request) => {
   const host = request.headers.get('x-original-host') || request.headers.get('host');
   const uri = request.headers.get('x-original-uri') || '/';
   const method = request.headers.get('x-original-method') || 'POST';
-  const scheme = request.headers.get('x-original-scheme') || 'https';
-  const expectedUrl = `${scheme}://${host}${uri}`;
+  const requestScheme = request.headers.get('x-original-scheme') || 'https';
+  const expectedUrl = `${requestScheme}://${host}${uri}`;
 
   const verified = verifyAnyAuth(authz, { expectedUrl, expectedMethod: method });
   if (!verified) {
