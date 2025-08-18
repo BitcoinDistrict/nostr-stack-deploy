@@ -110,11 +110,17 @@ else
 fi
 
 # Normalize live cert path (handles certbot creating -0001, -0002 lineages)
-if ls "/etc/letsencrypt/live/${BLOSSOM_DOMAIN}"*/fullchain.pem >/dev/null 2>&1; then
-  CERT_DIR_REAL=$(dirname $(ls -1 "/etc/letsencrypt/live/${BLOSSOM_DOMAIN}"*/fullchain.pem | head -n1))
+CERT_DIR_REAL=""
+for pem in /etc/letsencrypt/live/${BLOSSOM_DOMAIN}*/fullchain.pem; do
+  if [ -f "$pem" ]; then
+    CERT_DIR_REAL="$(dirname "$pem")"
+    break
+  fi
+done
+if [ -n "${CERT_DIR_REAL}" ]; then
   # Ensure stable symlink without suffix
-  if [ "$CERT_DIR_REAL" != "/etc/letsencrypt/live/${BLOSSOM_DOMAIN}" ]; then
-    sudo ln -sfn "$CERT_DIR_REAL" "/etc/letsencrypt/live/${BLOSSOM_DOMAIN}"
+  if [ "${CERT_DIR_REAL}" != "/etc/letsencrypt/live/${BLOSSOM_DOMAIN}" ]; then
+    sudo ln -sfn "${CERT_DIR_REAL}" "/etc/letsencrypt/live/${BLOSSOM_DOMAIN}"
   fi
 
   # Ensure no stale .conf files shadow this vhost
@@ -127,6 +133,8 @@ if ls "/etc/letsencrypt/live/${BLOSSOM_DOMAIN}"*/fullchain.pem >/dev/null 2>&1; 
   if [ "${BLOSSOM_GATE_MODE}" = "open" ] || ! to_bool "${NOSTR_AUTH_ENABLED}"; then
     sudo sed -i "/auth_request \\/__auth;/d" "${BLOSSOM_SITE_PATH}"
   fi
+  # Ensure vhost is enabled after rewrite
+  sudo ln -sf "${BLOSSOM_SITE_PATH}" "/etc/nginx/sites-enabled/${BLOSSOM_DOMAIN}"
   sudo nginx -t && sudo systemctl reload nginx
 fi
 

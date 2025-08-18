@@ -43,12 +43,16 @@ else
 fi
 
 # Normalize live cert path (handles certbot creating -0001, -0002 lineages)
-if [ "$CERT_STATUS" = "ok" ] || ls "/etc/letsencrypt/live/${DOMAIN}"*/fullchain.pem >/dev/null 2>&1; then
-  if ls "/etc/letsencrypt/live/${DOMAIN}"*/fullchain.pem >/dev/null 2>&1; then
-    CERT_DIR_REAL=$(dirname $(ls -1 "/etc/letsencrypt/live/${DOMAIN}"*/fullchain.pem | head -n1))
-    if [ "$CERT_DIR_REAL" != "/etc/letsencrypt/live/${DOMAIN}" ]; then
-      sudo ln -sfn "$CERT_DIR_REAL" "/etc/letsencrypt/live/${DOMAIN}"
-    fi
+CERT_DIR_REAL=""
+for pem in /etc/letsencrypt/live/${DOMAIN}*/fullchain.pem; do
+  if [ -f "$pem" ]; then
+    CERT_DIR_REAL="$(dirname "$pem")"
+    break
+  fi
+done
+if [ "$CERT_STATUS" = "ok" ] || [ -n "${CERT_DIR_REAL}" ]; then
+  if [ -n "${CERT_DIR_REAL}" ] && [ "${CERT_DIR_REAL}" != "/etc/letsencrypt/live/${DOMAIN}" ]; then
+    sudo ln -sfn "${CERT_DIR_REAL}" "/etc/letsencrypt/live/${DOMAIN}"
   fi
   envsubst '${DOMAIN}' < "${CONFIGS_DIR}/nginx/relay-https.conf.template" | sudo tee "${SITE_PATH}" >/dev/null
   sudo nginx -t
