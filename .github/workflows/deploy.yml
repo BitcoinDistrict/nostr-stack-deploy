@@ -1,4 +1,4 @@
-name: Deploy Strfry
+name: Deploy Nostr Stack
 
 on:
   push:
@@ -92,25 +92,7 @@ jobs:
       - name: Run deploy script on server
         run: |
           ssh -4 -i ~/.ssh/id_ed25519 -o StrictHostKeyChecking=accept-new -o AddressFamily=inet ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "\
-            DOMAIN=${{ secrets.RELAY_DOMAIN }} \\
-            CERTBOT_EMAIL=${{ secrets.CERTBOT_EMAIL }} \\
-            DASHBOARD_ENABLED=${{ vars.DASHBOARD_ENABLED }} \\
-            DASHBOARD_DOMAIN=${{ secrets.DASHBOARD_DOMAIN }} \\
-            CLOUDFLARE_ENABLED=${{ vars.CLOUDFLARE_ENABLED }} \\
             CLOUDFLARE_API_TOKEN=${{ secrets.CLOUDFLARE_API_TOKEN }} \\
-            BLOSSOM_ENABLED=${{ vars.BLOSSOM_ENABLED }} \\
-            BLOSSOM_DOMAIN=${{ vars.BLOSSOM_DOMAIN }} \\
-            BLOSSOM_CONTAINER_IMAGE=${{ vars.BLOSSOM_CONTAINER_IMAGE }} \\
-            BLOSSOM_PORT=${{ vars.BLOSSOM_PORT }} \\
-            BLOSSOM_MAX_UPLOAD_MB=${{ vars.BLOSSOM_MAX_UPLOAD_MB }} \\
-            BLOSSOM_GATE_MODE=${{ vars.BLOSSOM_GATE_MODE }} \\
-            BLOSSOM_ALLOWLIST_FILE=${{ vars.BLOSSOM_ALLOWLIST_FILE }} \\
-            NOSTR_AUTH_ENABLED=${{ vars.NOSTR_AUTH_ENABLED }} \\
-            NOSTR_AUTH_PORT=${{ vars.NOSTR_AUTH_PORT }} \\
-            NOSTR_AUTH_GATE_MODE=${{ vars.NOSTR_AUTH_GATE_MODE }} \\
-            NOSTR_AUTH_ALLOWLIST_FILE=${{ vars.NOSTR_AUTH_ALLOWLIST_FILE }} \\
-            NOSTR_AUTH_CACHE_TTL_SECONDS=${{ vars.NOSTR_AUTH_CACHE_TTL_SECONDS }} \\
-            NOSTR_AUTH_LOG_LEVEL=${{ vars.NOSTR_AUTH_LOG_LEVEL }} \\
             bash ~/nostr-stack-deploy/scripts/deploy.sh"
 
       - name: Post-deploy smoke test

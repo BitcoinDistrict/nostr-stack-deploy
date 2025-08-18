@@ -10,10 +10,7 @@ ExecStart=/home/deploy/nostr-stack-deploy/strfry/strfry relay --config /home/dep
 Restart=on-failure
 RestartSec=5
 LimitNOFILE=1000000
-Environment=STRFRY_CONFIG=/home/deploy/.strfry/strfry.conf
-Environment=NIP05_JSON_URLS=https://bitcoindistrict.org/.well-known/nostr.json
-Environment=NIP05_CACHE_TTL=300
-Environment=ALLOW_IMPORT=false
+EnvironmentFile=-/etc/default/strfry
 
 [Install]
 WantedBy=multi-user.target

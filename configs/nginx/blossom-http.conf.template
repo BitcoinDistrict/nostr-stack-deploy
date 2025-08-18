@@ -1,0 +1,26 @@
+map $http_cf_connecting_ip $client_ip {
+    default $http_cf_connecting_ip;
+    ''      $remote_addr;
+}
+
+upstream blossom_upstream { server 127.0.0.1:${BLOSSOM_PORT}; }
+
+server {
+    listen 80;
+    server_name ${BLOSSOM_DOMAIN};
+    
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+    }
+
+    # Allow direct proxy during HTTP-only phase (before cert)
+    location / {
+        proxy_pass http://blossom_upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $client_ip;
+        proxy_set_header X-Forwarded-For $client_ip;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+
+

@@ -1,0 +1,22 @@
+# Base Blossom server config rendered by setup-blossom.sh
+
+server:
+  host: 127.0.0.1
+  port: ${BLOSSOM_PORT}
+  base_url: https://${BLOSSOM_DOMAIN}
+
+storage:
+  data_dir: /var/lib/blossom
+
+limits:
+  max_upload_mb: ${BLOSSOM_MAX_UPLOAD_MB}
+
+upload:
+  enabled: true
+  requireAuth: false
+
+media:
+  enabled: true
+  requireAuth: false
+
+

@@ -87,6 +87,40 @@ nostr-stack-deploy/
 
 ## Setup Instructions
 
+This repo now uses modular scripts and environment files.
+
+### Environment configuration
+
+- Copy `configs/default.env` to `.env` (optional for local/dev) and adjust.
+- For environment-specific overrides, create `configs/production.env`, `configs/staging.env`, etc.
+- Secrets (API tokens, SSH keys) should be provided via CI/CD secrets or host environment and not committed.
+
+Priority when loading variables:
+
+1. `configs/default.env`
+2. `.env` in repo root
+3. `configs/${DEPLOY_ENV}.env`
+4. Variables injected by the environment (CI secrets) override all
+
+### Scripts
+
+- `scripts/deploy.sh`: Orchestrator. Loads config, then calls modules.
+- `scripts/setup-system.sh`: Base packages, swap, firewall.
+- `scripts/setup-nginx.sh`: Nginx and certificates for the relay `${DOMAIN}`.
+- `scripts/build-strfry.sh`: Builds strfry with sensible parallelism.
+- `scripts/setup-strfry.sh`: Installs runtime config and systemd service for strfry.
+- `scripts/setup-dashboard.sh`: Optional dashboard (gated by `DASHBOARD_ENABLED`).
+- `scripts/setup-blossom.sh`: Optional Blossom + nostr-auth-proxy (gated by `BLOSSOM_ENABLED`).
+- `scripts/deploy_legacy.sh`: Previous monolithic script retained for fallback.
+
+### Nginx templates
+
+Templates live in `configs/nginx/*.template` and are rendered with `envsubst` at deploy time.
+
+### CI/CD
+
+The GitHub Actions workflow `deploy.yml` invokes the orchestrator and passes variables/secrets from repository settings. Set `vars.DEPLOY_ENV` to select `configs/${DEPLOY_ENV}.env`.
+
 ### 1. Server Preparation
 
 * Ubuntu 24.04 server with a `deploy` user.

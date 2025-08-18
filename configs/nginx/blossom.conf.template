@@ -1,0 +1,140 @@
+map $http_cf_connecting_ip $client_ip {
+    default $http_cf_connecting_ip;
+    ''      $remote_addr;
+}
+
+upstream blossom_upstream { server 127.0.0.1:${BLOSSOM_PORT}; }
+upstream blossom_auth { server 127.0.0.1:${NOSTR_AUTH_PORT}; }
+
+server {
+    listen 80;
+    server_name ${BLOSSOM_DOMAIN};
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name ${BLOSSOM_DOMAIN};
+
+    ssl_certificate /etc/letsencrypt/live/${BLOSSOM_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${BLOSSOM_DOMAIN}/privkey.pem;
+
+    location / {
+        if ($request_method = OPTIONS) {
+            add_header Access-Control-Allow-Origin "*" always;
+            add_header Access-Control-Allow-Methods "GET, HEAD, POST, PUT, DELETE, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Authorization, *" always;
+            add_header Access-Control-Max-Age 86400 always;
+            add_header Content-Length 0;
+            add_header Content-Type text/plain;
+            return 204;
+        }
+        proxy_pass http://blossom_upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $client_ip;
+        proxy_set_header X-Forwarded-For $client_ip;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        client_max_body_size ${BLOSSOM_MAX_UPLOAD_MB}m;
+        proxy_hide_header Access-Control-Allow-Origin;
+        proxy_hide_header Access-Control-Allow-Credentials;
+        proxy_hide_header Access-Control-Allow-Headers;
+        proxy_hide_header Access-Control-Allow-Methods;
+        proxy_hide_header Access-Control-Expose-Headers;
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Access-Control-Expose-Headers "*" always;
+        add_header Access-Control-Allow-Headers "Authorization, *" always;
+        add_header Access-Control-Allow-Methods "GET, HEAD, POST, PUT, DELETE, OPTIONS" always;
+        add_header Access-Control-Max-Age 86400 always;
+    }
+
+    location /upload {
+        if ($request_method = OPTIONS) {
+            add_header Access-Control-Allow-Origin "*" always;
+            add_header Access-Control-Allow-Methods "GET, HEAD, POST, PUT, DELETE, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Authorization, *" always;
+            add_header Access-Control-Max-Age 86400 always;
+            add_header Content-Length 0;
+            add_header Content-Type text/plain;
+            return 204;
+        }
+        if ($request_method = HEAD) {
+            add_header Access-Control-Allow-Origin "*" always;
+            add_header Access-Control-Allow-Methods "GET, HEAD, POST, PUT, DELETE, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Authorization, *" always;
+            add_header Access-Control-Max-Age 86400 always;
+            add_header Content-Length 0;
+            add_header Content-Type text/plain;
+            return 204;
+        }
+        auth_request /__auth;
+        proxy_pass http://blossom_upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $client_ip;
+        proxy_set_header X-Forwarded-For $client_ip;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Authorization $http_authorization;
+        client_max_body_size ${BLOSSOM_MAX_UPLOAD_MB}m;
+        proxy_hide_header Access-Control-Allow-Origin;
+        proxy_hide_header Access-Control-Allow-Credentials;
+        proxy_hide_header Access-Control-Allow-Headers;
+        proxy_hide_header Access-Control-Allow-Methods;
+        proxy_hide_header Access-Control-Expose-Headers;
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Access-Control-Expose-Headers "*" always;
+        add_header Access-Control-Allow-Headers "Authorization, *" always;
+        add_header Access-Control-Allow-Methods "GET, HEAD, POST, PUT, DELETE, OPTIONS" always;
+        add_header Access-Control-Max-Age 86400 always;
+    }
+
+    location = /media {
+        if ($request_method = OPTIONS) {
+            add_header Access-Control-Allow-Origin "*" always;
+            add_header Access-Control-Allow-Methods "GET, HEAD, POST, PUT, DELETE, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Authorization, *" always;
+            add_header Access-Control-Max-Age 86400 always;
+            add_header Content-Length 0;
+            add_header Content-Type text/plain;
+            return 204;
+        }
+        if ($request_method = HEAD) {
+            add_header Access-Control-Allow-Origin "*" always;
+            add_header Access-Control-Allow-Methods "GET, HEAD, POST, PUT, DELETE, OPTIONS" always;
+            add_header Access-Control-Allow-Headers "Authorization, *" always;
+            add_header Access-Control-Expose-Headers "*" always;
+            add_header Access-Control-Max-Age 86400 always;
+            add_header Content-Length 0;
+            add_header Content-Type text/plain;
+            return 204;
+        }
+        proxy_pass http://blossom_upstream;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $client_ip;
+        proxy_set_header X-Forwarded-For $client_ip;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_hide_header Access-Control-Allow-Origin;
+        proxy_hide_header Access-Control-Allow-Credentials;
+        proxy_hide_header Access-Control-Allow-Headers;
+        proxy_hide_header Access-Control-Allow-Methods;
+        proxy_hide_header Access-Control-Expose-Headers;
+        add_header Access-Control-Allow-Origin "*" always;
+        add_header Access-Control-Expose-Headers "*" always;
+        add_header Access-Control-Allow-Headers "Authorization, *" always;
+        add_header Access-Control-Allow-Methods "GET, HEAD, POST, PUT, DELETE, OPTIONS" always;
+        add_header Access-Control-Max-Age 86400 always;
+    }
+
+    location = /__auth {
+        internal;
+        proxy_pass http://blossom_auth/auth;
+        proxy_set_header X-NIP05 $http_x_nip05;
+        proxy_set_header Authorization $http_authorization;
+        proxy_set_header X-Original-Host $host;
+        proxy_set_header X-Original-URI $request_uri;
+        proxy_set_header X-Original-Method $request_method;
+        proxy_set_header X-Original-Scheme $scheme;
+        proxy_pass_request_body off;
+        proxy_set_header Content-Length "";
+    }
+}
+
+
