@@ -94,6 +94,13 @@ sudo rm -f \
   "/etc/nginx/sites-available/${BLOSSOM_DOMAIN}.conf" \
   "/etc/nginx/sites-enabled/${BLOSSOM_DOMAIN}.conf" || true
 sudo rm -f "/etc/nginx/sites-enabled/${BLOSSOM_DOMAIN}" || true
+# Fix accidental directory/symlink inside sites-enabled (breaks nginx include)
+if [ -L "/etc/nginx/sites-enabled/sites-available" ]; then
+  sudo rm -f "/etc/nginx/sites-enabled/sites-available" || true
+fi
+if [ -d "/etc/nginx/sites-enabled/sites-available" ]; then
+  sudo rm -rf "/etc/nginx/sites-enabled/sites-available" || true
+fi
 envsubst '${BLOSSOM_DOMAIN} ${BLOSSOM_PORT}' < "${CONFIGS_DIR}/nginx/blossom-http.conf.template" | sudo tee "${BLOSSOM_SITE_PATH}" >/dev/null
 sudo ln -sf "${BLOSSOM_SITE_PATH}" "/etc/nginx/sites-enabled/${BLOSSOM_DOMAIN}"
 sudo nginx -t && sudo systemctl reload nginx

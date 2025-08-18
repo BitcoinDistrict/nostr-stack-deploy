@@ -18,6 +18,14 @@ sudo rm -f \
   "/etc/nginx/sites-enabled/${DOMAIN}.conf" || true
 sudo rm -f "/etc/nginx/sites-enabled/${DOMAIN}" || true
 
+# Fix accidental directory/symlink inside sites-enabled (breaks nginx include)
+if [ -L "/etc/nginx/sites-enabled/sites-available" ]; then
+  sudo rm -f "/etc/nginx/sites-enabled/sites-available" || true
+fi
+if [ -d "/etc/nginx/sites-enabled/sites-available" ]; then
+  sudo rm -rf "/etc/nginx/sites-enabled/sites-available" || true
+fi
+
 sudo mkdir -p /var/www/certbot
 
 # Render initial HTTP config (only substitute ${DOMAIN}; preserve $http_* vars)
