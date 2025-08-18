@@ -1,22 +1,44 @@
 # Base Blossom server config rendered by setup-blossom.sh
 
-server:
-  host: 127.0.0.1
-  port: ${BLOSSOM_PORT}
-  base_url: https://${BLOSSOM_DOMAIN}
+# Optional: override the domain used in returned URLs (else request host is used)
+publicDomain: ""
+
+# Local DB path inside container
+databasePath: /app/data/sqlite.db
 
 storage:
-  data_dir: /var/lib/blossom
+  # Storage backend: local | s3 (local by default)
+  backend: local
 
-limits:
-  max_upload_mb: ${BLOSSOM_MAX_UPLOAD_MB}
+  # Keep blobs even when unowned (safer default)
+  removeWhenNoOwners: false
+
+  # Local storage path (bind-mounted from host)
+  local:
+    dir: /app/data/blobs
+
+  # Acceptance/retention rules (checked in order). A matching rule keeps/allows the blob.
+  # Include broad image/* rule so common uploads are accepted.
+  rules:
+    - type: "image/*"
+      expiration: 1 week
+    - type: "video/*"
+      expiration: 5 days
+    - type: "text/*"
+      expiration: 1 month
+    - type: "*"
+      expiration: 2 days
 
 upload:
   enabled: true
+  # Open mode by default (nginx/proxy may add a gate). When false, 24242 is optional.
   requireAuth: false
+  # Do not require rules to include a pubkey list; allows public uploads under type rules
+  requirePubkeyInRule: false
 
 media:
   enabled: true
   requireAuth: false
+  requirePubkeyInRule: false
 
 
