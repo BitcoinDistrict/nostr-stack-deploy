@@ -22,16 +22,10 @@ to_bool() {
   esac
 }
 
-# Snapshot of variables that were present in the environment before we started loading files
-if [ -z "${__PRESERVE_ENV_SNAPSHOT_INITIALIZED:-}" ]; then
-  declare -Ag __PRESERVE_ENV_SNAPSHOT
-  while IFS='=' read -r __kv_name __kv_val; do
-    # Only record valid bash var names
-    if [[ "$__kv_name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
-      __PRESERVE_ENV_SNAPSHOT["$__kv_name"]=1
-    fi
-  done < <(env)
-  export __PRESERVE_ENV_SNAPSHOT_INITIALIZED=1
+# Snapshot original environment variable names (CI secrets, etc.)
+if [ -z "${__ORIGINAL_ENV_VARS_SNAPSHOT:-}" ]; then
+  __ORIGINAL_ENV_VARS_SNAPSHOT=" $(env | awk -F= '{print $1}' | tr '\n' ' ') "
+  export __ORIGINAL_ENV_VARS_SNAPSHOT
 fi
 
 # Load a dotenv-style file. Variables that were present in the original environment
@@ -60,7 +54,7 @@ load_env_file_with_override() {
         val="${BASH_REMATCH[1]}"
       fi
       # Preserve variables that were set in the original process env (e.g., CI secrets)
-      if [ -n "${__PRESERVE_ENV_SNAPSHOT[$key]+x}" ]; then
+      if [[ " ${__ORIGINAL_ENV_VARS_SNAPSHOT} " == *" ${key} "* ]]; then
         continue
       fi
       # Otherwise, allow later files to override earlier ones
