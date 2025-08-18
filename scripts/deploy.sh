@@ -619,8 +619,8 @@ EOF
         sudo sed -i "s/NOSTR_AUTH_PORT_PLACEHOLDER/${NOSTR_AUTH_PORT}/g" "${BLOSSOM_SITE_PATH}"
         sudo sed -i "s/BLOSSOM_MAX_UPLOAD_MB_PLACEHOLDER/${BLOSSOM_MAX_UPLOAD_MB}/g" "${BLOSSOM_SITE_PATH}"
 
-        # If gate is open, remove auth_request from the nginx conf
-        if [ "$BLOSSOM_GATE_MODE" = "open" ]; then
+        # If gate is open OR nostr-auth-proxy is disabled, remove auth_request from nginx conf
+        if [ "$BLOSSOM_GATE_MODE" = "open" ] || [ "$NOSTR_AUTH_ENABLED" != "true" ]; then
             sudo sed -i "/auth_request \\/__auth;/d" "${BLOSSOM_SITE_PATH}"
         fi
 
