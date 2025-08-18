@@ -53,12 +53,15 @@
         $("uploadBtn").disabled = true;
         status("Uploading...");
         try {
-          const form = new FormData();
-          form.append("file", f);
           const headers = {};
+          // In open mode, leave Authorization empty; if provided, it will be sent
           if (auth) headers["Authorization"] = auth;
           if (nip05) headers["X-NIP05"] = nip05;
-          const resp = await fetch("/upload", { method: "POST", body: form, headers });
+          // Send raw bytes via PUT to match blossom-server API
+          if (f.type) headers["Content-Type"] = f.type;
+          headers["X-Content-Length"] = String(f.size);
+          headers["X-Content-Type"] = f.type || "application/octet-stream";
+          const resp = await fetch("/upload", { method: "PUT", body: f, headers });
           const ok = resp.ok;
           const ct = resp.headers.get("content-type") || "";
           let body = await (ct.includes("application/json") ? resp.json() : resp.text());
