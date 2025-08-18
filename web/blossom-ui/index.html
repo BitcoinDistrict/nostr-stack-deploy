@@ -54,14 +54,36 @@
         status("Uploading...");
         try {
           const headers = {};
-          // In open mode, leave Authorization empty; if provided, it will be sent
-          if (auth) headers["Authorization"] = auth;
           if (nip05) headers["X-NIP05"] = nip05;
           // Send raw bytes via PUT to match blossom-server API
           if (f.type) headers["Content-Type"] = f.type;
           headers["X-Content-Length"] = String(f.size);
           headers["X-Content-Type"] = f.type || "application/octet-stream";
-          const resp = await fetch("/upload", { method: "PUT", body: f, headers });
+
+          // Compute SHA-256 of the file for X-SHA-256 and optional NIP-24242 'x' tag
+          const buf = await f.arrayBuffer();
+          const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", buf));
+          const hex = Array.from(digest).map(b => b.toString(16).padStart(2, '0')).join('');
+          headers["X-SHA-256"] = hex;
+
+          // If no manual Authorization provided, try to sign a 24242 event via window.nostr
+          if (!auth && window.nostr && typeof window.nostr.signEvent === 'function') {
+            try {
+              const exp = Math.floor(Date.now() / 1000) + 300; // +5 minutes
+              const ev = await window.nostr.signEvent({
+                kind: 24242,
+                content: 'Authorize Upload',
+                created_at: Math.floor(Date.now() / 1000),
+                tags: [ ['t','upload'], ['x', hex], ['expiration', String(exp)] ],
+              });
+              const b64u = btoa(JSON.stringify(ev)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+              headers["Authorization"] = `Nostr ${b64u}`;
+            } catch (_) {}
+          } else if (auth) {
+            headers["Authorization"] = auth;
+          }
+
+          const resp = await fetch("/upload", { method: "PUT", body: buf, headers });
           const ok = resp.ok;
           const ct = resp.headers.get("content-type") || "";
           let body = await (ct.includes("application/json") ? resp.json() : resp.text());
