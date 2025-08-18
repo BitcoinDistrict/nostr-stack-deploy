@@ -22,9 +22,22 @@ to_bool() {
   esac
 }
 
-# Load a dotenv-style file but do NOT override variables that are already set in the environment
+# Snapshot of variables that were present in the environment before we started loading files
+if [ -z "${__PRESERVE_ENV_SNAPSHOT_INITIALIZED:-}" ]; then
+  declare -Ag __PRESERVE_ENV_SNAPSHOT
+  while IFS='=' read -r __kv_name __kv_val; do
+    # Only record valid bash var names
+    if [[ "$__kv_name" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+      __PRESERVE_ENV_SNAPSHOT["$__kv_name"]=1
+    fi
+  done < <(env)
+  export __PRESERVE_ENV_SNAPSHOT_INITIALIZED=1
+fi
+
+# Load a dotenv-style file. Variables that were present in the original environment
+# (before any files were loaded) are preserved. Otherwise, later files OVERRIDE earlier ones.
 # - Ignores blank lines and comments
-load_env_file_preserving_existing() {
+load_env_file_with_override() {
   local file="$1"
   [ -f "$file" ] || return 0
   while IFS= read -r line || [ -n "$line" ]; do
@@ -46,10 +59,12 @@ load_env_file_preserving_existing() {
       elif [[ "$val" =~ ^'(.*)'$ ]]; then
         val="${BASH_REMATCH[1]}"
       fi
-      # If not already set in environment, export it
-      if [ -z "${!key+x}" ]; then
-        export "$key=$val"
+      # Preserve variables that were set in the original process env (e.g., CI secrets)
+      if [ -n "${__PRESERVE_ENV_SNAPSHOT[$key]+x}" ]; then
+        continue
       fi
+      # Otherwise, allow later files to override earlier ones
+      export "$key=$val"
     fi
   done < "$file"
 }
@@ -63,13 +78,14 @@ fi
 DEPLOY_ENV="${DEPLOY_ENV:-production}"
 export DEPLOY_ENV
 
-# Load variables in priority order (lowest first), but preserve already-set envs (CI secrets win):
+# Load variables in priority order (lowest first). Later files override earlier ones,
+# but variables that were present in the original environment are preserved as highest priority.
 # 1) configs/default.env
 # 2) .env (repo root, for local dev convenience)
 # 3) configs/${DEPLOY_ENV}.env (e.g. production.env)
-load_env_file_preserving_existing "${CONFIGS_DIR}/default.env"
-load_env_file_preserving_existing "${REPO_DIR}/.env"
-load_env_file_preserving_existing "${CONFIGS_DIR}/${DEPLOY_ENV}.env"
+load_env_file_with_override "${CONFIGS_DIR}/default.env"
+load_env_file_with_override "${REPO_DIR}/.env"
+load_env_file_with_override "${CONFIGS_DIR}/${DEPLOY_ENV}.env"
 
 # Provide sane fallbacks if still missing after env loading
 DOMAIN="${DOMAIN:-relay.example.com}"
