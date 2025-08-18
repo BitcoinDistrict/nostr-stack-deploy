@@ -8,10 +8,6 @@ map $http_cf_connecting_ip $client_ip {
     ''      $remote_addr;
 }
 
-upstream strfry_ws {
-    server 127.0.0.1:7777;
-}
-
 server {
     listen 80;
     server_name ${DOMAIN};
@@ -26,7 +22,7 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
 
     location / {
-        proxy_pass http://strfry_ws;
+        proxy_pass http://127.0.0.1:7777;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
