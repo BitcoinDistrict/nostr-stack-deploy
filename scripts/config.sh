@@ -28,14 +28,17 @@ load_env_file_preserving_existing() {
   local file="$1"
   [ -f "$file" ] || return 0
   while IFS= read -r line || [ -n "$line" ]; do
-    # Trim leading/trailing whitespace
-    line="${line%%[[:space:]]*}$(printf '\n')${line##*[[:space:]]}"
-    # Skip comments and empty
-    [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
-    # Only handle simple KEY=VALUE pairs (no export prefix)
-    if [[ "$line" =~ ^([A-Za-z_][A-Za-z0-9_]*)=(.*)$ ]]; then
+    # Strip CR (Windows endings)
+    line="${line%$'\r'}"
+    # Skip comments/empty lines
+    [[ "$line" =~ ^[[:space:]]*$ ]] && continue
+    [[ "$line" =~ ^[[:space:]]*# ]] && continue
+    # Handle KEY=VALUE pairs (allow spaces around '=')
+    if [[ "$line" =~ ^[[:space:]]*([A-Za-z_][A-Za-z0-9_]*)[[:space:]]*=(.*)$ ]]; then
       local key="${BASH_REMATCH[1]}"
       local val="${BASH_REMATCH[2]}"
+      # Trim leading spaces in value
+      val="${val#*[![:space:]]}"
       # Remove optional surrounding quotes
       if [[ "$val" =~ ^"(.*)"$ ]]; then
         val="${BASH_REMATCH[1]}"

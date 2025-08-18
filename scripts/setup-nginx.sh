@@ -7,10 +7,14 @@ source "${SCRIPT_DIR}/config.sh" "${DEPLOY_ENV:-}"
 SITE_PATH="/etc/nginx/sites-available/${DOMAIN}"
 ENABLED_PATH="/etc/nginx/sites-enabled/${DOMAIN}"
 
+# Clean up any accidentally created files from previous buggy runs (filenames containing 'DOMAIN=')
+sudo find /etc/nginx/sites-available -maxdepth 1 -type f -name "*DOMAIN=*" -print -exec sudo rm -f {} + || true
+sudo find /etc/nginx/sites-enabled -maxdepth 1 -type l -name "*DOMAIN=*" -print -exec sudo rm -f {} + || true
+
 sudo mkdir -p /var/www/certbot
 
-# Render initial HTTP config
-envsubst < "${CONFIGS_DIR}/nginx/relay-http.conf.template" | sudo tee "${SITE_PATH}" >/dev/null
+# Render initial HTTP config (only substitute ${DOMAIN}; preserve $http_* vars)
+envsubst '${DOMAIN}' < "${CONFIGS_DIR}/nginx/relay-http.conf.template" | sudo tee "${SITE_PATH}" >/dev/null
 sudo ln -sf "${SITE_PATH}" "${ENABLED_PATH}"
 sudo nginx -t
 sudo systemctl reload nginx
@@ -31,9 +35,9 @@ else
   fi
 fi
 
-# If certificate exists, render HTTPS config
+# If certificate exists, render HTTPS config (only substitute ${DOMAIN})
 if [ "$CERT_STATUS" = "ok" ] || [ -f "/etc/letsencrypt/live/${DOMAIN}/fullchain.pem" ]; then
-  envsubst < "${CONFIGS_DIR}/nginx/relay-https.conf.template" | sudo tee "${SITE_PATH}" >/dev/null
+  envsubst '${DOMAIN}' < "${CONFIGS_DIR}/nginx/relay-https.conf.template" | sudo tee "${SITE_PATH}" >/dev/null
   sudo nginx -t
   sudo systemctl reload nginx
 fi
