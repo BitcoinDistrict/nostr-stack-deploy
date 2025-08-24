@@ -144,6 +144,27 @@ class Nip05MultiCache:
         return pubkey_hex in self._allowed_hex_pubkeys
 
 
+class TokenBucket:
+    def __init__(self, capacity: int, refill_per_second: float) -> None:
+        self.capacity = max(1, int(capacity))
+        self.refill_per_second = max(0.01, float(refill_per_second))
+        self.tokens = float(self.capacity)
+        self.last_ts = time.time()
+
+    def allow(self, now: float) -> bool:
+        elapsed = max(0.0, now - self.last_ts)
+        if elapsed:
+            self.tokens = min(self.capacity, self.tokens + elapsed * self.refill_per_second)
+            self.last_ts = now
+        if self.tokens >= 1.0:
+            self.tokens -= 1.0
+            return True
+        return False
+
+
+# In-memory per-pubkey buckets for ephemeral kinds
+_ephemeral_buckets: Dict[str, TokenBucket] = {}
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="NIP-05 gate plugin for strfry")
     parser.add_argument(
@@ -162,6 +183,18 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=os.environ.get("ALLOW_IMPORT", "false"),
         help="If true, allow Import/Sync/Stream sources regardless of NIP-05",
+    )
+    parser.add_argument(
+        "--eph-rate",
+        type=float,
+        default=float(os.environ.get("EPHEMERAL_RATE", "2.0")),
+        help="Token refill rate per second for ephemeral kinds (kind 20000-29999)",
+    )
+    parser.add_argument(
+        "--eph-burst",
+        type=int,
+        default=int(os.environ.get("EPHEMERAL_BURST", "10")),
+        help="Token bucket capacity (burst) for ephemeral kinds (kind 20000-29999)",
     )
     return parser.parse_args()
 
@@ -214,6 +247,7 @@ def main() -> None:
         event_id = event.get("id", "")
         pubkey = event.get("pubkey", "").lower()
         source_type = req.get("sourceType", "")
+        kind = event.get("kind", 0)
 
         response = {"id": event_id}
 
@@ -222,6 +256,24 @@ def main() -> None:
                 "action": "reject",
                 "msg": "blocked: invalid event or pubkey",
             })
+            print(json.dumps(response), flush=True)
+            continue
+
+        # Special handling for ephemeral events (kind 20000-29999)
+        if 20000 <= kind <= 29999:
+            # Per-pubkey token-bucket rate limit
+            bucket = _ephemeral_buckets.get(pubkey)
+            if bucket is None:
+                bucket = TokenBucket(capacity=args.eph_burst, refill_per_second=args.eph_rate)
+                _ephemeral_buckets[pubkey] = bucket
+            now_ts = time.time()
+            if bucket.allow(now_ts):
+                response.update({"action": "accept"})
+            else:
+                response.update({
+                    "action": "reject",
+                    "msg": "blocked: rate limited (ephemeral)",
+                })
             print(json.dumps(response), flush=True)
             continue
 
