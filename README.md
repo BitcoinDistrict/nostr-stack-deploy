@@ -187,33 +187,7 @@ sudo apt-get install -y build-essential libsqlite3-dev libssl-dev pkg-config \
 
 ### 4.1 Deploy Configuration (Environment Variables)
 
-You can customize the deployment via environment variables:
-
-```
-DOMAIN=relay.bitcoindistrict.org
-CERTBOT_EMAIL=hey@bitcoindistrict.org
-CLOUDFLARE_ENABLED=false
-CLOUDFLARE_API_TOKEN=
-DASHBOARD_ENABLED=true
-DASHBOARD_DOMAIN=dashboard.relay.bitcoindistrict.org
-
-# Blossom media server
-BLOSSOM_ENABLED=true
-BLOSSOM_DOMAIN=media.relay.bitcoindistrict.org
-BLOSSOM_CONTAINER_IMAGE=ghcr.io/hzrd149/blossom-server:master
-BLOSSOM_PORT=3300
-BLOSSOM_MAX_UPLOAD_MB=16
-BLOSSOM_GATE_MODE=nip05   # nip05 | allowlist | open
-BLOSSOM_ALLOWLIST_FILE=/etc/blossom/allowlist.txt
-
-# Standalone Nostr Auth Proxy (shared for HTTP services)
-NOSTR_AUTH_ENABLED=true
-NOSTR_AUTH_PORT=3310
-NOSTR_AUTH_GATE_MODE=nip05
-NOSTR_AUTH_ALLOWLIST_FILE=
-NOSTR_AUTH_CACHE_TTL_SECONDS=300
-NOSTR_AUTH_LOG_LEVEL=info
-```
+You can customize the deployment via environment variables found in `configs/default.env`
 
 Guidance:
 - Put SECRETS (e.g., `CLOUDFLARE_API_TOKEN`, SSH keys) in your CI/CD secrets or host environment. Do not commit them.
