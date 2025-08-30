@@ -373,6 +373,12 @@ def parse_args() -> argparse.Namespace:
         default=int(os.environ.get("STARTUP_GRACE_SECONDS", "0")),
         help="Fail-open for regular kinds until first cache success or N seconds",
     )
+    parser.add_argument(
+        "--allowed-kinds-no-nip05",
+        type=str,
+        default=os.environ.get("ALLOWED_KINDS_NO_NIP05", "0,3,5,7,9734,9735,10002,22242"),
+        help="Comma-separated list of event kinds to allow without NIP-05 verification",
+    )
     return parser.parse_args()
 
 
@@ -397,22 +403,32 @@ def should_bypass_source(source_type: str, allow_import_flag: str) -> bool:
     return source_type in ("Import", "Sync", "Stream")
 
 
-def should_allow_kind_without_nip05(kind: int) -> bool:
+def parse_allowed_kinds(allowed_kinds_str: str) -> Set[int]:
+    """
+    Parse comma-separated string of event kinds into a set of integers.
+    Returns empty set if parsing fails.
+    """
+    if not allowed_kinds_str.strip():
+        return set()
+    
+    try:
+        kinds = set()
+        for kind_str in allowed_kinds_str.split(","):
+            kind_str = kind_str.strip()
+            if kind_str:
+                kinds.add(int(kind_str))
+        return kinds
+    except (ValueError, TypeError):
+        log_err(f"[nip05-gate] failed to parse allowed kinds: {allowed_kinds_str}")
+        return set()
+
+
+def should_allow_kind_without_nip05(kind: int, allowed_kinds: Set[int]) -> bool:
     """
     Determine if an event kind should be allowed regardless of NIP-05 verification.
     These kinds are beneficial for relay performance and network health.
     """
-    ALLOWED_KINDS_NO_NIP05 = {
-        0,      # User metadata (replaceable, minimal storage impact)
-        3,      # Contact lists (replaceable, enables social graph discovery)
-        5,      # Event deletion (helps users manage content, can reduce storage)
-        7,      # Reactions (high engagement, small events)
-        9734,   # Zap request (Lightning payments, Bitcoin-focused relay benefit)
-        9735,   # Zap receipt (Lightning payments, Bitcoin-focused relay benefit)
-        10002,  # Relay list metadata (replaceable, helps clients optimize connections)
-        22242,  # Auth events (essential for secure connections)
-    }
-    return kind in ALLOWED_KINDS_NO_NIP05
+    return kind in allowed_kinds
 
 
 def main() -> None:
@@ -426,6 +442,9 @@ def main() -> None:
         fields = (nip05_field,)
     else:
         fields = ("names",)
+
+    # Parse allowed kinds from configuration
+    allowed_kinds = parse_allowed_kinds(args.allowed_kinds_no_nip05)
 
     cache = Nip05MultiCache(urls=urls, ttl_seconds=args.ttl, fields=fields)
     cache.start_background_refresh()
@@ -442,7 +461,7 @@ def main() -> None:
         + ",".join(url_hosts)
         + f" ttl={args.ttl}s fields="
         + ",".join(fields)
-        + f" allow_import={args.allow_import.lower()} eph_rate={args.eph_rate} eph_burst={args.eph_burst} eph_max={args.eph_max_buckets} eph_ttl={args.eph_ttl_seconds}s startup_grace={args.startup_grace_seconds}s kind_bypass_enabled=true"
+        + f" allow_import={args.allow_import.lower()} eph_rate={args.eph_rate} eph_burst={args.eph_burst} eph_max={args.eph_max_buckets} eph_ttl={args.eph_ttl_seconds}s startup_grace={args.startup_grace_seconds}s allowed_kinds={sorted(allowed_kinds)}"
     )
 
     # Start ephemeral GC
@@ -541,7 +560,7 @@ def main() -> None:
             continue
 
         # Allow beneficial event kinds regardless of NIP-05 verification
-        if should_allow_kind_without_nip05(kind):
+        if should_allow_kind_without_nip05(kind, allowed_kinds):
             response.update({"action": "accept"})
             with _metrics_lock:
                 _metrics_accepts += 1
