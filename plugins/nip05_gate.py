@@ -181,18 +181,20 @@ class Nip05MultiCache:
                 subset, not_modified = self._fetch_one(url)
                 if not_modified:
                     successes += 1
-                    # reset backoff on success
+                    # reset backoff on success - set retry time to far future to avoid immediate retries
                     self._backoff_seconds[url] = 0.0
-                    self._next_retry_ts[url] = 0.0
-                    log_err(f"[nip05-gate] {url} not modified (304)")
+                    self._next_retry_ts[url] = now + self.ttl_seconds
+                    # Only log 304s occasionally to reduce log spam
+                    if int(now) % 60 == 0:  # Log once per minute at most
+                        log_err(f"[nip05-gate] {url} not modified (304)")
                 else:
                     assert subset is not None
                     with self._lock:
                         self._per_url_allowed[url] = subset
                     successes += 1
-                    # reset backoff on success
+                    # reset backoff on success - set retry time to far future to avoid immediate retries
                     self._backoff_seconds[url] = 0.0
-                    self._next_retry_ts[url] = 0.0
+                    self._next_retry_ts[url] = now + self.ttl_seconds
                     log_err(f"[nip05-gate] loaded {len(subset)} pubkeys from {url}")
             except Exception as e:
                 # increase backoff with jitter
@@ -453,7 +455,9 @@ def main() -> None:
     allowed_kinds = parse_allowed_kinds(args.allowed_kinds_no_nip05)
 
     cache = Nip05MultiCache(urls=urls, ttl_seconds=args.ttl, fields=fields)
-    cache.start_background_refresh()
+    # Only start background refresh in nip05 mode
+    if args.gate_mode.lower() != "open":
+        cache.start_background_refresh()
 
     # Startup summary
     url_hosts = []
