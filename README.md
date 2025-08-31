@@ -59,14 +59,15 @@ This repository manages automated deployment of the **Strfry Nostr Relay** for B
 ### Strfry event gating vs Blossom upload authentication
 
 - **Strfry (relay) uses `plugins/nip05_gate.py`** to accept/reject incoming events.
-  - **What it does**: Builds an allowlist from one or more `.well-known/nostr.json` documents and accepts events whose `pubkey` is present in `names`, `verified_names`, or both (configurable).
+  - **What it does**: Supports two gate modes: `open` (accepts all events) and `nip05` (builds an allowlist from `.well-known/nostr.json` documents and accepts events whose `pubkey` is present in `names`, `verified_names`, or both).
   - **Behavior**:
-    - Non-blocking event path; background refresh with per-URL backoff and conditional HTTP (ETag/Last-Modified; 304 treated as success).
+    - **Open mode**: Accepts all valid events after basic validation (event ID and pubkey format).
+    - **NIP05 mode**: Non-blocking event path; background refresh with per-URL backoff and conditional HTTP (ETag/Last-Modified; 304 treated as success).
     - Optional startup fail-open for regular kinds via `--startup-grace-seconds` (ephemeral kinds remain rate-limited).
     - Ephemeral kinds `20000–29999` are governed by per-pubkey token buckets (`EPHEMERAL_*`), independent of the allowlist.
     - Optional bypass for `Import/Sync/Stream` sources when `--allow-import` is enabled.
-  - **Key flags/env**: `NIP05_JSON_URLS`/`NIP05_JSON_URL`, `NIP05_FIELD` (`names|verified_names|both`), `ALLOW_IMPORT`, `STARTUP_GRACE_SECONDS`, `EPHEMERAL_RATE`, `EPHEMERAL_BURST`, `EPHEMERAL_MAX_BUCKETS`, `EPHEMERAL_TTL_SECONDS`.
-  - **Scope**: Only affects the relay’s event ingestion; does not interact with the auth proxy.
+  - **Key flags/env**: `STRFRY_GATE_MODE` (`open|nip05`), `NIP05_JSON_URLS`/`NIP05_JSON_URL`, `NIP05_FIELD` (`names|verified_names|both`), `ALLOW_IMPORT`, `STARTUP_GRACE_SECONDS`, `EPHEMERAL_RATE`, `EPHEMERAL_BURST`, `EPHEMERAL_MAX_BUCKETS`, `EPHEMERAL_TTL_SECONDS`.
+  - **Scope**: Only affects the relay's event ingestion; does not interact with the auth proxy.
 
 - **Blossom (media uploads) uses `scripts/nostr-auth-proxy/`**, not the strfry plugin.
   - **What it does**: Validates upload requests in front of Blossom using NIP‑98 (or legacy 24242) and NIP‑05 mapping, with modes `nip05` (default), `allowlist`, or `open`.

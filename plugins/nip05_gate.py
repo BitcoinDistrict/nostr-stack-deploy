@@ -379,6 +379,12 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("ALLOWED_KINDS_NO_NIP05", "0,3,5,7,9734,9735,10002,22242"),
         help="Comma-separated list of event kinds to allow without NIP-05 verification",
     )
+    parser.add_argument(
+        "--gate-mode",
+        type=str,
+        default=os.environ.get("STRFRY_GATE_MODE", "nip05"),
+        help="Gate mode: 'open' (accept all), 'nip05' (NIP-05 verification), default is nip05",
+    )
     return parser.parse_args()
 
 
@@ -457,7 +463,9 @@ def main() -> None:
         except Exception:
             url_hosts.append(u)
     log_err(
-        "[nip05-gate] startup: urls="
+        "[nip05-gate] startup: gate_mode="
+        + args.gate_mode
+        + " urls="
         + ",".join(url_hosts)
         + f" ttl={args.ttl}s fields="
         + ",".join(fields)
@@ -525,6 +533,14 @@ def main() -> None:
                 "action": "reject",
                 "msg": "blocked: invalid event or pubkey",
             })
+            print(json.dumps(response), flush=True)
+            continue
+
+        # Check gate mode - if open, accept all valid events
+        if args.gate_mode.lower() == "open":
+            response.update({"action": "accept"})
+            with _metrics_lock:
+                _metrics_accepts += 1
             print(json.dumps(response), flush=True)
             continue
 

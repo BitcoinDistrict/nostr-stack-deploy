@@ -14,6 +14,7 @@ mkdir -p "${DATA_DIR}"
 sudo mkdir -p /etc/default
 cat <<EOF | sudo tee /etc/default/strfry >/dev/null
 STRFRY_CONFIG=${RUNTIME_CONFIG_DIR}/strfry.conf
+STRFRY_GATE_MODE=${STRFRY_GATE_MODE:-nip05}
 NIP05_JSON_URLS=${NIP05_JSON_URLS:-}
 NIP05_CACHE_TTL=${NIP05_CACHE_TTL:-300}
 ALLOW_IMPORT=${ALLOW_IMPORT:-false}
