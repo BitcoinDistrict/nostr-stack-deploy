@@ -378,7 +378,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--allowed-kinds-no-nip05",
         type=str,
-        default=os.environ.get("ALLOWED_KINDS_NO_NIP05", "0,3,5,7,9734,9735,10002,22242"),
+        default=os.environ.get("ALLOWED_KINDS_NO_NIP05", "5,7,9734,9735,10002,22242"),
         help="Comma-separated list of event kinds to allow without NIP-05 verification",
     )
     parser.add_argument(
